@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 import os
 import openai
 import json
-from main import container_client
+from config.blob_config import container_client
 from utils.memory_reader import get_latest_memory_summary, get_all_memory_metadata
 
 load_dotenv()

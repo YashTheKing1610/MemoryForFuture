@@ -1,9 +1,11 @@
 from fastapi import FastAPI, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
-from azure.storage.blob import BlobServiceClient
 from dotenv import load_dotenv
+from azure_openai import router as ai_router
+from azure_voice import router as voice_router
 from azure_utils import upload_file_to_blob
 from utils.file_type import detect_file_type
+from config.blob_config import blob_service_client, container_client, container_name
 
 import os
 import uuid
@@ -11,37 +13,30 @@ import json
 import io
 import datetime
 
-# Load environment variables
 load_dotenv()
 
-# Azure connection setup
-connection_string = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
-container_name = os.getenv("AZURE_CONTAINER_NAME")
-blob_service_client = BlobServiceClient.from_connection_string(connection_string)
-container_client = blob_service_client.get_container_client(container_name)
-
-# FastAPI app setup
+# Initialize FastAPI app
 app = FastAPI()
 
-# CORS settings (allow from all origins for now)
+# Enable CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # Set to frontend URL in production
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# ✅ Import OpenAI router
-from azure_openai import router as ai_router
+# Include routers
 app.include_router(ai_router)
+app.include_router(voice_router)
 
-# ✅ Optional test route to verify if API is working
+# Root endpoint
 @app.get("/")
 def root():
-    return {"message": "MemoryForFuture API is running"}
+    return {"message": "MemoryForFuture API is running ✅"}
 
-# ✅ ✅ TEST AZURE STORAGE ACCESS
+# Test Azure Storage connection
 @app.get("/test-storage-access")
 def test_storage_access():
     try:
@@ -57,7 +52,7 @@ def test_storage_access():
             "error": str(e)
         }
 
-# ✅ MEMORY UPLOAD API
+# Upload a memory with file + metadata
 @app.post("/upload-memory/")
 async def upload_memory(
     file: UploadFile,
@@ -75,11 +70,9 @@ async def upload_memory(
         file_type = detect_file_type(ext)
         file_name = f"{memory_id}.{ext}"
 
-        # Read and upload file
         file_content = await file.read()
         file_blob_path = upload_file_to_blob(profile_id, file_type, file_content, file_name)
 
-        # Prepare metadata
         metadata = {
             "memory_id": memory_id,
             "profile_id": profile_id,
@@ -94,7 +87,6 @@ async def upload_memory(
             "is_favorite": is_favorite
         }
 
-        # Upload metadata as JSON
         json_bytes = io.BytesIO(json.dumps(metadata).encode("utf-8"))
         upload_file_to_blob(profile_id, "metadata", json_bytes, f"{memory_id}.json")
 

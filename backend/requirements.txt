@@ -45,3 +45,11 @@ typing_extensions==4.14.0
 click==8.2.1
 isodate==0.7.2
 sniffio==1.3.1
+# Changes made to this 
+
+fastapi
+uvicorn
+openai
+azure-storage-blob
+azure-cognitiveservices-speech
+python-dotenv
