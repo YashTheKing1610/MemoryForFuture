@@ -53,3 +53,13 @@ openai
 azure-storage-blob
 azure-cognitiveservices-speech
 python-dotenv
+
+azure-cognitiveservices-speech==1.34.1
+openai==1.30.1
+python-dotenv==1.0.1
+fastapi==0.116.0
+uvicorn==0.35.0
+
+azure-cognitiveservices-speech==1.34.1
+python-dotenv==1.0.1
+openai==1.30.1

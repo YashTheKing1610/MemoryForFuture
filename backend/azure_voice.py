@@ -3,15 +3,17 @@ from azure.storage.blob import BlobServiceClient, ContentSettings
 from dotenv import load_dotenv
 from utils.voice_model_manager import get_voice_model_config, save_voice_model_config
 from utils.memory_reader import get_latest_memory_summary
-import os, uuid
+import os
+import uuid
 import openai
 import azure.cognitiveservices.speech as speechsdk
 
+# Load environment variables
 load_dotenv()
 
 router = APIRouter()
 
-# Azure Storage
+# Azure Blob Storage Setup
 connection_string = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
 container_name = os.getenv("AZURE_CONTAINER_NAME")
 container_client = BlobServiceClient.from_connection_string(connection_string).get_container_client(container_name)
@@ -89,7 +91,7 @@ async def voice_chat(profile_id: str = Form(...), question: str = Form(...)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-def generate_audio_from_text(text, voice_config, output_path):
+def generate_audio_from_text(text: str, voice_config: dict, output_path: str):
     speech_config = speechsdk.SpeechConfig(
         subscription=os.getenv("AZURE_SPEECH_KEY"),
         region=os.getenv("AZURE_SPEECH_REGION")
