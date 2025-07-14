@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:dotted_border/dotted_border.dart';
 import 'upload_memory_screen.dart';
+import 'memory_list_screen.dart';
 
 class Profile {
   final String id;
@@ -198,7 +199,10 @@ class _HomeScreenState extends State<HomeScreen> {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (context) => UploadMemoryScreen(profileId: profile.id),
+                        builder: (context) => MemoryListScreen(
+                          profileId: profile.id,
+                          username: profile.name,
+                        ),
                       ),
                     );
                   },
