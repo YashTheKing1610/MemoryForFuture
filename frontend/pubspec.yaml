@@ -1,0 +1,33 @@
+name: memory_for_future
+description: A futuristic memory assistant app
+publish_to: "none"
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.2.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.6
+  http: ^0.13.6
+  file_picker: ^5.2.5
+  path: any
+  fluttertoast: ^8.2.4  # ✅ Toast message support
+  google_fonts: ^4.0.4
+  dotted_border: ^2.0.0
+
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^2.0.0
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/
+
+dependency_overrides:
+  file_picker: ^5.2.5

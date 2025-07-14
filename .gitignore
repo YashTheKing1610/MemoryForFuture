@@ -1,9 +1,16 @@
+# Python
 venv/
 __pycache__/
 *.pyc
-.env
-.env.*
-.DS_Store
-*.sqlite3
-*.log
-node_modules/
+
+# Flutter
+**/build/
+**/.dart_tool/
+**/.packages
+frontend/.idea/
+frontend/.flutter-plugins
+frontend/pubspec.lock
+
+# IDEs
+*.iml
+.vscode/
