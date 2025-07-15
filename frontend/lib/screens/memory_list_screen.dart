@@ -1,226 +1,189 @@
 import 'package:flutter/material.dart';
-import 'upload_memory_screen.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+
+import 'memory_views/memory_images_section.dart';
+import 'memory_views/memory_videos_section.dart';
+import 'memory_views/memory_audios_section.dart';
+import 'memory_views/memory_docs_section.dart';
+import 'memory_views/all_memories_view.dart';
+import 'upload_memory_screen.dart';
 
 class MemoryListScreen extends StatefulWidget {
   final String profileId;
   final String username;
 
   const MemoryListScreen({
-    Key? key,
+    super.key,
     required this.profileId,
     required this.username,
-  }) : super(key: key);
+  });
 
   @override
   State<MemoryListScreen> createState() => _MemoryListScreenState();
 }
 
-class _MemoryListScreenState extends State<MemoryListScreen> {
-  String selectedTab = "All";
-  List<Map<String, dynamic>> collections = [];
+class _MemoryListScreenState extends State<MemoryListScreen> with TickerProviderStateMixin {
+  late TabController _tabController;
   List<Map<String, dynamic>> memories = [];
+  List<String> collections = [];
   bool isLoading = true;
-  String? selectedCollection;
-
-  final List<String> tabs = ["All", "Images", "Videos", "Audios"];
 
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 5, vsync: this);
     fetchMemories();
   }
 
   Future<void> fetchMemories() async {
-    setState(() => isLoading = true);
-    try {
-      final url = Uri.parse("http://192.168.31.46:8000/get-memories/${widget.profileId}");
-      final response = await http.get(url);
-
-      if (response.statusCode == 200) {
-        final List<dynamic> data = json.decode(response.body);
-        print("Fetched Memories: $data");
-
-        setState(() {
-          memories = data.map((e) => e as Map<String, dynamic>).toList();
-
-          final collectionNames = memories
-              .where((m) => m['collection'] != null && m['collection'].toString().isNotEmpty)
-              .map((m) => m['collection'].toString())
-              .toSet()
-              .toList();
-
-          collections = [
-            {"name": "All Collections", "id": null},
-            ...collectionNames.map((name) => {"name": name, "id": name}).toList()
-          ];
-        });
-      } else {
-        print("Failed to fetch memories: ${response.statusCode}");
-      }
-    } catch (e) {
-      print("Error fetching memories: $e");
-    } finally {
+    final response = await http.get(
+      Uri.parse('http://127.0.0.1:8000/get-memories/${widget.profileId}'),
+    );
+    if (response.statusCode == 200) {
+      final List<dynamic> data = json.decode(response.body);
+      setState(() {
+        memories = List<Map<String, dynamic>>.from(data);
+        extractCollections();
+        isLoading = false;
+      });
+    } else {
       setState(() => isLoading = false);
+      print("Failed to load memories");
     }
   }
 
-  List<Map<String, dynamic>> getFilteredMemories() {
-    List<Map<String, dynamic>> filtered = [...memories];
-
-    if (selectedCollection != null) {
-      filtered = filtered.where((m) => m['collection'] == selectedCollection).toList();
+  void extractCollections() {
+    final Set<String> collectionSet = {};
+    for (var memory in memories) {
+      final collection = memory['collection'];
+      if (collection != null && collection.trim().isNotEmpty) {
+        collectionSet.add(collection.trim());
+      }
     }
-
-    if (selectedTab == "Images") {
-      filtered = filtered.where((m) {
-        final file = (m['file_path'] ?? '').toString().toLowerCase();
-        return file.endsWith('.jpg') || file.endsWith('.jpeg') || file.endsWith('.png') || file.endsWith('.gif');
-      }).toList();
-    } else if (selectedTab == "Videos") {
-      filtered = filtered.where((m) {
-        final file = (m['file_path'] ?? '').toString().toLowerCase();
-        return file.endsWith('.mp4') || file.endsWith('.mov') || file.endsWith('.avi');
-      }).toList();
-    } else if (selectedTab == "Audios") {
-      filtered = filtered.where((m) {
-        final file = (m['file_path'] ?? '').toString().toLowerCase();
-        return file.endsWith('.mp3') || file.endsWith('.wav') || file.endsWith('.m4a');
-      }).toList();
-    }
-
-    return filtered;
+    collections = collectionSet.toList();
   }
 
   void _createNewCollection() {
-    TextEditingController controller = TextEditingController();
     showDialog(
       context: context,
-      builder: (_) => AlertDialog(
-        title: const Text("New Collection"),
-        content: TextField(
-          controller: controller,
-          decoration: const InputDecoration(hintText: "Enter collection name"),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("Cancel"),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              final name = controller.text.trim();
-              if (name.isNotEmpty) {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => UploadMemoryScreen(profileId: widget.profileId),
+      builder: (context) {
+        final TextEditingController _collectionName = TextEditingController();
+        List<bool> selected = List.filled(memories.length, false);
+
+        return StatefulBuilder(builder: (context, setModalState) {
+          return AlertDialog(
+            backgroundColor: Colors.grey[900],
+            title: const Text("Create New Collection", style: TextStyle(color: Colors.white)),
+            content: SingleChildScrollView(
+              child: Column(
+                children: [
+                  TextField(
+                    controller: _collectionName,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: const InputDecoration(
+                      labelText: "Collection Name",
+                      labelStyle: TextStyle(color: Colors.white60),
+                    ),
                   ),
-                ).then((_) => fetchMemories());
-              }
-            },
-            child: const Text("Create"),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCollectionCard(String name, String? id, {bool isNew = false}) {
-    bool isSelected = selectedCollection == id;
-    return GestureDetector(
-      onTap: isNew
-          ? _createNewCollection
-          : () => setState(() {
-                selectedCollection = isSelected ? null : id;
-                if (selectedCollection == null) {
-                  selectedTab = "All";
-                }
-              }),
-      child: Container(
-        width: 160,
-        margin: const EdgeInsets.only(right: 12),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: isSelected ? Colors.white : Colors.white70,
-            width: isSelected ? 2 : 1,
-          ),
-          color: isSelected ? Colors.white.withOpacity(0.3) : Colors.white.withOpacity(0.1),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              isNew ? "+" : (collections.indexWhere((c) => c['id'] == id) + 1).toString().padLeft(2, '0'),
-              style: const TextStyle(color: Colors.white70, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              name,
-              style: const TextStyle(color: Colors.white, fontSize: 16),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-            if (!isNew && id != null)
-              Text(
-                "${memories.where((m) => m['collection'] == id).length} items",
-                style: const TextStyle(color: Colors.white70, fontSize: 12),
+                  const SizedBox(height: 10),
+                  ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: memories.length,
+                    itemBuilder: (context, index) {
+                      final memory = memories[index];
+                      return CheckboxListTile(
+                        value: selected[index],
+                        onChanged: (val) => setModalState(() => selected[index] = val!),
+                        title: Text(
+                          memory['title'] ?? 'Untitled',
+                          style: const TextStyle(color: Colors.white70),
+                        ),
+                        checkColor: Colors.black,
+                        activeColor: Colors.cyanAccent,
+                        controlAffinity: ListTileControlAffinity.leading,
+                      );
+                    },
+                  ),
+                ],
               ),
-          ],
-        ),
-      ),
+            ),
+            actions: [
+              TextButton(
+                child: const Text("Cancel", style: TextStyle(color: Colors.redAccent)),
+                onPressed: () => Navigator.pop(context),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.purple),
+                child: const Text("Create"),
+                onPressed: () {
+                  final name = _collectionName.text.trim();
+                  if (name.isEmpty || !selected.contains(true)) {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                      content: Text("Please enter collection name & select memories"),
+                      backgroundColor: Colors.redAccent,
+                    ));
+                    return;
+                  }
+
+                  setState(() {
+                    for (int i = 0; i < selected.length; i++) {
+                      if (selected[i]) {
+                        memories[i]['collection'] = name;
+                      }
+                    }
+                    collections.add(name);
+                  });
+
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                    content: Text("Collection created successfully 🎉"),
+                    backgroundColor: Colors.green,
+                  ));
+                },
+              ),
+            ],
+          );
+        });
+      },
     );
   }
 
-  Widget _buildMemoryCard(Map<String, dynamic> memory) {
-    final String fileUrl = "https://<your_blob_url>/${memory['file_path']}";
-    final isImage = fileUrl.toLowerCase().endsWith(".png") || fileUrl.toLowerCase().endsWith(".jpg");
+  Widget _buildCollectionsRow() {
+    if (collections.isEmpty) return const SizedBox.shrink();
 
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12),
-        color: Colors.white10,
-        image: isImage
-            ? DecorationImage(
-                image: NetworkImage(fileUrl),
-                fit: BoxFit.cover,
-                colorFilter: ColorFilter.mode(Colors.black.withOpacity(0.4), BlendMode.darken),
-              )
-            : null,
-      ),
-      child: Stack(
-        children: [
-          if (!isImage)
-            Center(
-              child: Icon(Icons.insert_drive_file, color: Colors.white70, size: 40),
+    return SizedBox(
+      height: 100,
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        itemCount: collections.length,
+        itemBuilder: (context, index) {
+          final collection = collections[index];
+          return Container(
+            width: 140,
+            margin: const EdgeInsets.symmetric(horizontal: 8),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              color: Colors.white12,
+              border: Border.all(color: Colors.cyanAccent, width: 1.5),
             ),
-          Positioned(
-            bottom: 8,
-            left: 12,
-            right: 12,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                const Icon(Icons.folder, color: Colors.cyanAccent, size: 30),
+                const SizedBox(height: 8),
                 Text(
-                  memory['title'] ?? 'Untitled',
-                  style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
-                  maxLines: 1,
+                  collection,
+                  maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                ),
-                Text(
-                  memory['description'] ?? 'No description',
-                  style: const TextStyle(color: Colors.white70, fontSize: 12),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: Colors.white),
                 ),
               ],
             ),
-          ),
-        ],
+          );
+        },
       ),
     );
   }
@@ -228,125 +191,96 @@ class _MemoryListScreenState extends State<MemoryListScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.transparent,
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Color(0xFF6E44FF), Color(0xFFE56B70)],
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        elevation: 0,
+        leading: const BackButton(color: Colors.white),
+        title: Text(
+          'Memories of ${widget.username}',
+          style: GoogleFonts.poppins(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
           ),
         ),
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 50),
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Header
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    "Memory for Future",
-                    style: TextStyle(fontSize: 28, color: Colors.white, fontWeight: FontWeight.bold),
+        actions: [
+          IconButton(
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => UploadMemoryScreen(
+                    profileId: widget.profileId,
+                    username: widget.username,
                   ),
-                  IconButton(
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => UploadMemoryScreen(profileId: widget.profileId),
-                        ),
-                      ).then((_) => fetchMemories());
-                    },
-                    icon: const Icon(Icons.add, color: Colors.white, size: 30),
-                  )
-                ],
-              ),
-              const SizedBox(height: 10),
-              Text(
-                "Welcome ${widget.username}, add a new memory!",
-                style: const TextStyle(color: Colors.white70, fontSize: 16),
-              ),
-              const SizedBox(height: 20),
-
-              // Tabs
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: tabs.map((tab) {
-                    bool isSelected = tab == selectedTab;
-                    return Padding(
-                      padding: const EdgeInsets.only(right: 8.0),
-                      child: GestureDetector(
-                        onTap: () => setState(() => selectedTab = tab),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: isSelected ? Colors.white : Colors.transparent,
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(color: Colors.white70),
-                          ),
-                          child: Text(
-                            tab,
-                            style: TextStyle(
-                              color: isSelected ? Colors.black : Colors.white,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      ),
-                    );
-                  }).toList(),
                 ),
-              ),
-
-              const SizedBox(height: 20),
-              const Text("Collections", style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 10),
-
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: [
-                    ...collections.map((col) => _buildCollectionCard(col['name'], col['id'])),
-                    _buildCollectionCard("New Collection", null, isNew: true),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 30),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text("Memories", style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
-                  Text("${getFilteredMemories().length} items", style: const TextStyle(color: Colors.white70)),
-                ],
-              ),
-              const SizedBox(height: 10),
-
-              isLoading
-                  ? const Center(child: CircularProgressIndicator(color: Colors.white))
-                  : getFilteredMemories().isEmpty
-                      ? const Center(child: Text("No memories found", style: TextStyle(color: Colors.white70)))
-                      : GridView.builder(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 2,
-                            crossAxisSpacing: 15,
-                            mainAxisSpacing: 15,
-                            childAspectRatio: 0.8,
-                          ),
-                          itemCount: getFilteredMemories().length,
-                          itemBuilder: (context, index) {
-                            final memory = getFilteredMemories()[index];
-                            return _buildMemoryCard(memory);
-                          },
-                        ),
-            ],
+              ).then((_) => fetchMemories());
+            },
+            icon: const Icon(Icons.add, color: Colors.cyanAccent),
           ),
+        ],
+        bottom: TabBar(
+          controller: _tabController,
+          isScrollable: true,
+          indicatorColor: Colors.cyanAccent,
+          labelColor: Colors.cyanAccent,
+          unselectedLabelColor: Colors.white60,
+          labelStyle: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+          tabs: const [
+            Tab(text: "All"),
+            Tab(text: "Images"),
+            Tab(text: "Videos"),
+            Tab(text: "Audios"),
+            Tab(text: "Documents"),
+          ],
         ),
+      ),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text("Your Collections", style: TextStyle(color: Colors.white70, fontSize: 16)),
+                ElevatedButton.icon(
+                  onPressed: _createNewCollection,
+                  icon: const Icon(Icons.create_new_folder),
+                  label: const Text("New Collection"),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.deepPurple,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          _buildCollectionsRow(),
+          Expanded(
+            child: Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Color(0xFF0F2027), Color(0xFF203A43), Color(0xFF2C5364)],
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                ),
+              ),
+              child: isLoading
+                  ? const Center(child: CircularProgressIndicator(color: Colors.cyanAccent))
+                  : TabBarView(
+                      controller: _tabController,
+                      children: [
+                        AllMemoriesView(profileId: widget.profileId, username: widget.username, memories: memories),
+                        MemoryImagesSection(profileId: widget.profileId, username: widget.username, memories: memories),
+                        MemoryVideosSection(profileId: widget.profileId, username: widget.username, memories: memories),
+                        MemoryAudiosSection(profileId: widget.profileId, username: widget.username, memories: memories),
+                        MemoryDocsSection(profileId: widget.profileId, username: widget.username, memories: memories),
+                      ],
+                    ),
+            ),
+          ),
+        ],
       ),
     );
   }

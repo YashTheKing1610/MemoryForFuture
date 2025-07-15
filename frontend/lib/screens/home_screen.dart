@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:dotted_border/dotted_border.dart';
 import 'upload_memory_screen.dart';
@@ -10,6 +12,14 @@ class Profile {
   final String relation;
 
   Profile({required this.id, required this.name, required this.relation});
+
+  factory Profile.fromJson(Map<String, dynamic> json) {
+    return Profile(
+      id: json['id'],
+      name: json['name'],
+      relation: json['relation'],
+    );
+  }
 }
 
 class HomeScreen extends StatefulWidget {
@@ -20,13 +30,62 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  List<Profile> profiles = [
-    Profile(id: '1', name: 'Yash', relation: 'Myself'),
-    Profile(id: '2', name: 'Usman', relation: 'Friend'),
-  ];
-
+  List<Profile> profiles = [];
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _relationController = TextEditingController();
+
+  final String baseUrl = 'http://127.0.0.1:8000';
+
+  @override
+  void initState() {
+    super.initState();
+    fetchProfiles();
+  }
+
+  Future<void> fetchProfiles() async {
+    final res = await http.get(Uri.parse("$baseUrl/get-profiles/"));
+    if (res.statusCode == 200) {
+      final List data = json.decode(res.body)['profiles'];
+      setState(() {
+        profiles = data.map((p) => Profile.fromJson(p)).toList();
+      });
+    }
+  }
+
+  Future<void> createProfile(String name, String relation) async {
+    final res = await http.post(
+      Uri.parse("$baseUrl/create-profile/"),
+      body: {
+        'name': name,
+        'relation': relation,
+      },
+    );
+    if (res.statusCode == 200) {
+      fetchProfiles();
+    } else {
+      final error = json.decode(res.body)['detail'] ?? "Unknown error";
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(error),
+        backgroundColor: Colors.red,
+      ));
+    }
+  }
+
+  Future<void> deleteProfile(String profileId) async {
+    final res = await http.delete(Uri.parse("$baseUrl/delete-profile/$profileId"));
+    if (res.statusCode == 200) {
+      fetchProfiles();
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text("Profile deleted permanently ✅"),
+      ));
+    } else {
+      final error = json.decode(res.body)['detail'] ?? "Unknown error";
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(error),
+        backgroundColor: Colors.red,
+      ));
+    }
+  }
 
   void _showCreateProfileDialog() {
     showDialog(
@@ -57,20 +116,15 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         actions: [
           TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-            },
+            onPressed: () => Navigator.pop(context),
             child: const Text("Cancel"),
           ),
           ElevatedButton(
             onPressed: () {
-              setState(() {
-                profiles.add(Profile(
-                  id: DateTime.now().millisecondsSinceEpoch.toString(),
-                  name: _nameController.text.trim(),
-                  relation: _relationController.text.trim(),
-                ));
-              });
+              createProfile(
+                _nameController.text.trim(),
+                _relationController.text.trim(),
+              );
               _nameController.clear();
               _relationController.clear();
               Navigator.pop(context);
@@ -82,21 +136,15 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  void _showRenameDialog(Profile profile) {
-    final TextEditingController renameController = TextEditingController(text: profile.name);
-
+  void _showDeleteConfirmation(Profile profile) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: Colors.black87,
-        title: const Text("Rename Profile", style: TextStyle(color: Colors.white)),
-        content: TextField(
-          controller: renameController,
-          style: const TextStyle(color: Colors.white),
-          decoration: const InputDecoration(
-            labelText: 'New Name',
-            labelStyle: TextStyle(color: Colors.white54),
-          ),
+        title: const Text("Delete Profile", style: TextStyle(color: Colors.redAccent)),
+        content: Text(
+          "Are you sure you want to delete '${profile.name}' and all its data permanently?",
+          style: const TextStyle(color: Colors.white70),
         ),
         actions: [
           TextButton(
@@ -105,27 +153,14 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           ElevatedButton(
             onPressed: () {
-              setState(() {
-                final index = profiles.indexOf(profile);
-                profiles[index] = Profile(
-                  id: profile.id,
-                  name: renameController.text.trim(),
-                  relation: profile.relation,
-                );
-              });
+              deleteProfile(profile.id);
               Navigator.pop(context);
             },
-            child: const Text("Rename"),
+            child: const Text("Delete"),
           ),
         ],
       ),
     );
-  }
-
-  void _removeProfile(Profile profile) {
-    setState(() {
-      profiles.remove(profile);
-    });
   }
 
   @override
@@ -252,15 +287,12 @@ class _HomeScreenState extends State<HomeScreen> {
                           right: 8,
                           child: PopupMenuButton<String>(
                             onSelected: (value) {
-                              if (value == 'rename') {
-                                _showRenameDialog(profile);
-                              } else if (value == 'remove') {
-                                _removeProfile(profile);
+                              if (value == 'delete') {
+                                _showDeleteConfirmation(profile);
                               }
                             },
                             itemBuilder: (context) => [
-                              const PopupMenuItem(value: 'rename', child: Text('Rename')),
-                              const PopupMenuItem(value: 'remove', child: Text('Remove')),
+                              const PopupMenuItem(value: 'delete', child: Text('Delete')),
                             ],
                             icon: const Icon(Icons.more_vert, color: Colors.white),
                           ),

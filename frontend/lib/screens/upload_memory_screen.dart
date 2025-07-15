@@ -1,12 +1,19 @@
+// ✅ FILE: upload_memory_screen.dart
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:http/http.dart' as http;
+import 'dart:convert';
 import 'dart:io';
 
 class UploadMemoryScreen extends StatefulWidget {
   final String profileId;
+  final String username; // ✅ Add username to constructor
 
-  const UploadMemoryScreen({super.key, required this.profileId});
+  const UploadMemoryScreen({
+    super.key,
+    required this.profileId,
+    required this.username,
+  });
 
   @override
   State<UploadMemoryScreen> createState() => _UploadMemoryScreenState();
@@ -14,24 +21,41 @@ class UploadMemoryScreen extends StatefulWidget {
 
 class _UploadMemoryScreenState extends State<UploadMemoryScreen> {
   final _formKey = GlobalKey<FormState>();
-
   final TextEditingController _titleController = TextEditingController();
   final TextEditingController _descriptionController = TextEditingController();
   final TextEditingController _tagsController = TextEditingController();
   final TextEditingController _emotionController = TextEditingController();
   final TextEditingController _collectionController = TextEditingController();
-
   File? _selectedFile;
   bool _isFavorite = false;
   bool _isUploading = false;
+  String _detectedFileType = "";
 
   Future<void> _pickFile() async {
     final result = await FilePicker.platform.pickFiles();
     if (result != null && result.files.single.path != null) {
+      final pickedFile = File(result.files.single.path!);
+      final extension = pickedFile.path.split('.').last.toLowerCase();
+      final fileType = _detectFileType(extension);
+
       setState(() {
-        _selectedFile = File(result.files.single.path!);
+        _selectedFile = pickedFile;
+        _detectedFileType = fileType;
       });
     }
+  }
+
+  String _detectFileType(String ext) {
+    const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'];
+    const videoExts = ['mp4', 'mov', 'avi', 'mkv', 'flv'];
+    const audioExts = ['mp3', 'wav', 'm4a', 'aac'];
+    const docExts = ['pdf', 'doc', 'docx', 'txt'];
+
+    if (imageExts.contains(ext)) return "images";
+    if (videoExts.contains(ext)) return "videos";
+    if (audioExts.contains(ext)) return "audios";
+    if (docExts.contains(ext)) return "documents";
+    return "others";
   }
 
   Future<void> _uploadMemory() async {
@@ -58,12 +82,25 @@ class _UploadMemoryScreenState extends State<UploadMemoryScreen> {
 
       request.files.add(await http.MultipartFile.fromPath('file', _selectedFile!.path));
 
-      final streamedResponse = request.send();
-      final response = await streamedResponse.timeout(const Duration(seconds: 30));
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
 
       if (response.statusCode == 200) {
-        _showSnackbar('Memory uploaded successfully ✅');
-        _resetForm();
+        final memory = json.decode(response.body);
+
+        Navigator.pop(context, {
+          "memory_id": memory["memory_id"],
+          "title": _titleController.text.trim(),
+          "description": _descriptionController.text.trim(),
+          "file_type": _detectedFileType,
+          "file_path": memory["file_path"],
+          "upload_date": DateTime.now().toIso8601String(),
+          "tags": _tagsController.text.trim().split(','),
+          "emotion": _emotionController.text.trim(),
+          "collection": _collectionController.text.trim(),
+          "is_favorite": _isFavorite,
+          "profile_id": widget.profileId,
+        });
       } else {
         _showSnackbar('Upload failed: ${response.statusCode}', isError: true);
       }
@@ -74,19 +111,6 @@ class _UploadMemoryScreenState extends State<UploadMemoryScreen> {
         _isUploading = false;
       });
     }
-  }
-
-  void _resetForm() {
-    _formKey.currentState?.reset();
-    _titleController.clear();
-    _descriptionController.clear();
-    _tagsController.clear();
-    _emotionController.clear();
-    _collectionController.clear();
-    setState(() {
-      _selectedFile = null;
-      _isFavorite = false;
-    });
   }
 
   void _showSnackbar(String message, {bool isError = false}) {
@@ -125,7 +149,7 @@ class _UploadMemoryScreenState extends State<UploadMemoryScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFF121212),
       appBar: AppBar(
-        title: const Text('Upload Memory'),
+        title: Text('Upload Memory for ${widget.username}'),
         backgroundColor: Colors.black,
       ),
       body: Padding(

@@ -1,17 +1,7 @@
-from fastapi import FastAPI, UploadFile, Form
+from fastapi import FastAPI, UploadFile, Form, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 from typing import Optional
-
-# Import modular routers
-from azure_openai import router as ai_router
-from azure_voice import router as voice_router
-from azure_voice_assistant import router as assistant_router
-
-# Azure and local utilities
-from azure_utils import upload_file_to_blob
-from utils.file_type import detect_file_type
-from config.blob_config import blob_service_client, container_name
 
 import os
 import uuid
@@ -19,13 +9,30 @@ import json
 import io
 import datetime
 
-# Load .env environment variables
+# Routers
+from azure_openai import router as ai_router
+from azure_voice import router as voice_router
+from azure_voice_assistant import router as assistant_router
+
+# Azure and local utils
+from azure_utils import upload_file_to_blob
+from utils.file_type import detect_file_type
+from config.blob_config import blob_service_client, container_name
+from utils.memory_reader import get_all_memory_metadata
+from utils.profile_utils import (
+    create_profile_in_storage,
+    profile_exists,
+    list_all_profiles,
+    delete_profile_and_data
+)
+
+# Load .env
 load_dotenv()
 
 # Initialize app
 app = FastAPI(title="MemoryForFuture API")
 
-# CORS middleware (allow all for now; restrict in production)
+# Allow all origins (use stricter CORS in production)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -43,6 +50,7 @@ app.include_router(assistant_router, prefix="/assistant", tags=["Voice Assistant
 def root():
     return {"message": "MemoryForFuture API is running ✅"}
 
+
 @app.get("/test-storage-access")
 def test_storage_access():
     try:
@@ -53,6 +61,7 @@ def test_storage_access():
         }
     except Exception as e:
         return {"message": "Access failed ❌", "error": str(e)}
+
 
 @app.post("/upload-memory/")
 async def upload_memory(
@@ -66,19 +75,17 @@ async def upload_memory(
     is_favorite: bool = Form(False)
 ):
     try:
-        # Generate memory ID
         memory_id = f"mem_{uuid.uuid4().hex[:8]}"
         ext = file.filename.split(".")[-1].lower()
         file_type = detect_file_type(ext)
         file_name = f"{memory_id}.{ext}"
 
-        # Read file content
         file_content = await file.read()
 
-        # Upload main file
+        # Upload memory file
         blob_path = upload_file_to_blob(profile_id, file_type, file_content, file_name)
 
-        # Prepare metadata dictionary
+        # Metadata
         metadata = {
             "memory_id": memory_id,
             "profile_id": profile_id,
@@ -93,7 +100,6 @@ async def upload_memory(
             "is_favorite": is_favorite
         }
 
-        # Upload metadata JSON to Azure
         metadata_bytes = io.BytesIO(json.dumps(metadata, indent=2).encode("utf-8"))
         upload_file_to_blob(profile_id, "metadata", metadata_bytes, f"{memory_id}.json")
 
@@ -108,3 +114,44 @@ async def upload_memory(
             "message": "Memory upload failed ❌",
             "error": str(e)
         }
+
+
+@app.get("/get-memories/{profile_id}")
+def get_memories(profile_id: str):
+    try:
+        container_client = blob_service_client.get_container_client(container_name)
+        memories = get_all_memory_metadata(profile_id, container_client)
+        return memories
+    except Exception as e:
+        return {"message": "Failed to fetch memories ❌", "error": str(e)}
+
+
+# ✅ Create Profile with name + relation
+@app.post("/create-profile/")
+def create_profile(
+    name: str = Form(...),
+    relation: str = Form(...)
+):
+    # Generate profile_id from name + relation
+    profile_id = f"{name.lower().strip()}_{relation.lower().strip()}".replace(" ", "_")
+
+    if profile_exists(profile_id):
+        raise HTTPException(status_code=400, detail=f"Profile '{name} ({relation})' already exists ⚠️")
+
+    result = create_profile_in_storage(profile_id, name.strip(), relation.strip())
+    return {**result, "profile_id": profile_id}
+
+
+# ✅ Get all profiles from Azure Blob Storage
+@app.get("/get-profiles/")
+def get_profiles():
+    return {"profiles": list_all_profiles()}
+
+
+# ✅ Delete Profile and All Memories
+@app.delete("/delete-profile/{profile_id}")
+def delete_profile(profile_id: str):
+    if not profile_exists(profile_id):
+        raise HTTPException(status_code=404, detail="Profile not found")
+
+    return delete_profile_and_data(profile_id)
