@@ -38,9 +38,13 @@ class _MemoryListScreenState extends State<MemoryListScreen> with TickerProvider
   }
 
   Future<void> fetchMemories() async {
+    print("Fetching memories for profileId: ${widget.profileId}");
+
     final response = await http.get(
-      Uri.parse('http://127.0.0.1:8000/get-memories/${widget.profileId}'),
-    );
+      Uri.parse('http://10.196.188.7:8000/get-memories/${widget.profileId}'),
+   );
+
+
     if (response.statusCode == 200) {
       final List<dynamic> data = json.decode(response.body);
       setState(() {
