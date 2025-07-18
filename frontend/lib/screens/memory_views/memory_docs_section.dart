@@ -1,90 +1,61 @@
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
+import '../memory_viewer_screen.dart';
 
 class MemoryDocsSection extends StatelessWidget {
-  final List<Map<String, dynamic>> memories;
   final String profileId;
-  final String username; // ✅ Added
+  final String username;
+  final List<Map<String, dynamic>> memories;
 
   const MemoryDocsSection({
     super.key,
-    required this.memories,
     required this.profileId,
-    required this.username, // ✅ Added
+    required this.username,
+    required this.memories,
   });
-
-  List<Map<String, dynamic>> get docMemories =>
-      memories.where((m) => m['file_type'] == 'doc').toList();
 
   @override
   Widget build(BuildContext context) {
+    final docMemories = memories.where((m) => m['file_type'] == 'document').toList();
+
     if (docMemories.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: const [
-            Icon(Icons.insert_drive_file, size: 64, color: Colors.white54),
-            SizedBox(height: 12),
-            Text(
-              "No document memories found.",
-              style: TextStyle(color: Colors.white70),
-            ),
-          ],
-        ),
+      return const Center(
+        child: Text("No document memories found", style: TextStyle(color: Colors.white70)),
       );
     }
 
     return ListView.builder(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      shrinkWrap: true,
-      physics: const BouncingScrollPhysics(),
+      padding: const EdgeInsets.all(12),
       itemCount: docMemories.length,
       itemBuilder: (context, index) {
         final memory = docMemories[index];
-        return _DocMemoryCard(memory: memory);
+        final filePath = memory['file_path'];
+        final fileUrl = "https://memoryforfuture.blob.core.windows.net/$filePath";
+
+        return GestureDetector(
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => MemoryViewerScreen(
+                  fileUrl: fileUrl,
+                  title: memory['title'] ?? 'Untitled',
+                  fileType: 'document',
+                ),
+              ),
+            );
+          },
+          child: Card(
+            color: Colors.white12,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            child: ListTile(
+              leading: const Icon(Icons.description, color: Colors.cyanAccent),
+              title: Text(memory['title'] ?? 'Untitled', style: const TextStyle(color: Colors.white)),
+              subtitle: Text(memory['description'] ?? '', style: const TextStyle(color: Colors.white54)),
+              trailing: const Icon(Icons.open_in_new, color: Colors.cyanAccent),
+            ),
+          ),
+        );
       },
     );
   }
 }
-
-class _DocMemoryCard extends StatelessWidget {
-  final Map<String, dynamic> memory;
-
-  const _DocMemoryCard({super.key, required this.memory});
-
-  Future<void> _launchDoc(String url) async {
-    final uri = Uri.parse(url);
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    } else {
-      debugPrint('❌ Could not launch $url');
-      ScaffoldMessenger.of(navigatorKey.currentContext!).showSnackBar(
-        const SnackBar(
-          content: Text("Could not open document."),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      color: Colors.white10,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      margin: const EdgeInsets.only(bottom: 16),
-      child: ListTile(
-        leading: const Icon(Icons.insert_drive_file, color: Colors.white),
-        title: Text(
-          memory['title'] ?? 'Untitled Document',
-          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-        ),
-        trailing: const Icon(Icons.arrow_forward_ios, color: Colors.white),
-        onTap: () => _launchDoc(memory['file_url']),
-      ),
-    );
-  }
-}
-
-// Global navigator key to use SnackBar from stateless widget
-final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();

@@ -1,150 +1,78 @@
 import 'package:flutter/material.dart';
-import 'package:video_player/video_player.dart';
-import 'package:audioplayers/audioplayers.dart';
-import 'package:url_launcher/url_launcher.dart';
+import '../memory_viewer_screen.dart';
 
 class AllMemoriesView extends StatelessWidget {
-  final List<Map<String, dynamic>> memories;
   final String profileId;
   final String username;
+  final List<Map<String, dynamic>> memories;
 
   const AllMemoriesView({
     super.key,
-    required this.memories,
     required this.profileId,
     required this.username,
+    required this.memories,
   });
+
+  IconData _getIconForType(String fileType) {
+    switch (fileType) {
+      case 'image':
+        return Icons.image;
+      case 'video':
+        return Icons.videocam;
+      case 'audio':
+        return Icons.audiotrack;
+      case 'document':
+        return Icons.description;
+      default:
+        return Icons.insert_drive_file;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     if (memories.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: const [
-            Icon(Icons.memory, size: 64, color: Colors.white54),
-            SizedBox(height: 12),
-            Text("No memories found.", style: TextStyle(color: Colors.white70)),
-          ],
-        ),
+      return const Center(
+        child: Text("No memories found", style: TextStyle(color: Colors.white70)),
       );
     }
 
     return ListView.builder(
-      physics: const BouncingScrollPhysics(),
-      itemCount: memories.length + 1,
+      padding: const EdgeInsets.all(12),
+      itemCount: memories.length,
       itemBuilder: (context, index) {
-        if (index == 0) {
-          return Padding(
-            padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
-            child: Text(
-              "All Memories of $username",
-              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white),
-            ),
-          );
-        }
-
-        final memory = memories[index - 1];
+        final memory = memories[index];
         final fileType = memory['file_type'];
+        final filePath = memory['file_path'];
+        final fileUrl = "https://memoryforfuture.blob.core.windows.net/$filePath";
 
-        switch (fileType) {
-          case 'image':
-            return _buildImageTile(memory);
-          case 'video':
-            return _buildVideoTile(context, memory);
-          case 'audio':
-            return _buildAudioTile(memory);
-          case 'doc':
-            return _buildDocTile(memory);
-          default:
-            return const SizedBox.shrink();
-        }
+        return GestureDetector(
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => MemoryViewerScreen(
+                  fileUrl: fileUrl,
+                  title: memory['title'] ?? 'Untitled',
+                  fileType: fileType,
+                ),
+              ),
+            );
+          },
+          child: Card(
+            color: Colors.white12,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            child: ListTile(
+              leading: Icon(_getIconForType(fileType), color: Colors.cyanAccent),
+              title: Text(memory['title'] ?? 'Untitled', style: const TextStyle(color: Colors.white)),
+              subtitle: Text(
+                memory['description'] ?? '',
+                style: const TextStyle(color: Colors.white54),
+              ),
+              trailing: const Icon(Icons.open_in_new, color: Colors.cyanAccent),
+            ),
+          ),
+        );
       },
     );
-  }
-
-  Widget _buildImageTile(Map<String, dynamic> memory) {
-    return Card(
-      color: Colors.white10,
-      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      child: ListTile(
-        leading: ClipRRect(
-          borderRadius: BorderRadius.circular(8),
-          child: Image.network(
-            memory['file_url'],
-            width: 50,
-            height: 50,
-            fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) =>
-                const Icon(Icons.broken_image, color: Colors.white54),
-          ),
-        ),
-        title: Text(
-          memory['title'] ?? 'Untitled Image',
-          style: const TextStyle(color: Colors.white),
-        ),
-        subtitle: const Text('📷 Image Memory', style: TextStyle(color: Colors.white54)),
-      ),
-    );
-  }
-
-  Widget _buildVideoTile(BuildContext context, Map<String, dynamic> memory) {
-    return Card(
-      color: Colors.white10,
-      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      child: ListTile(
-        leading: const Icon(Icons.videocam, color: Colors.white),
-        title: Text(
-          memory['title'] ?? 'Untitled Video',
-          style: const TextStyle(color: Colors.white),
-        ),
-        subtitle: const Text('🎥 Video Memory', style: TextStyle(color: Colors.white54)),
-        onTap: () => _launchUrl(memory['file_url']),
-      ),
-    );
-  }
-
-  Widget _buildAudioTile(Map<String, dynamic> memory) {
-    return Card(
-      color: Colors.white10,
-      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      child: ListTile(
-        leading: const Icon(Icons.audiotrack, color: Colors.white),
-        title: Text(
-          memory['title'] ?? 'Untitled Audio',
-          style: const TextStyle(color: Colors.white),
-        ),
-        subtitle: const Text('🎵 Audio Memory', style: TextStyle(color: Colors.white54)),
-        onTap: () => _playAudio(memory['file_url']),
-      ),
-    );
-  }
-
-  Widget _buildDocTile(Map<String, dynamic> memory) {
-    return Card(
-      color: Colors.white10,
-      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      child: ListTile(
-        leading: const Icon(Icons.insert_drive_file, color: Colors.white),
-        title: Text(
-          memory['title'] ?? 'Untitled Document',
-          style: const TextStyle(color: Colors.white),
-        ),
-        subtitle: const Text('📄 Document Memory', style: TextStyle(color: Colors.white54)),
-        onTap: () => _launchUrl(memory['file_url']),
-      ),
-    );
-  }
-
-  Future<void> _launchUrl(String url) async {
-    final uri = Uri.parse(url);
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    }
-  }
-
-  Future<void> _playAudio(String url) async {
-    final player = AudioPlayer();
-    await player.play(UrlSource(url));
   }
 }

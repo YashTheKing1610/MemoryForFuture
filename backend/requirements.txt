@@ -8,21 +8,22 @@ python-dotenv==1.1.1
 # File uploads
 python-multipart==0.0.20
 
-# Azure Blob Storage SDK
+# Azure SDKs
 azure-storage-blob==12.25.1
 azure-core==1.35.0
+azure-cognitiveservices-speech==1.34.1
 
-# Azure OpenAI SDK
+# OpenAI SDK
 openai==1.30.1
 
-# HTTP & requests
+# HTTP utilities
 requests==2.32.4
 certifi==2025.6.15
 charset-normalizer==3.4.2
 idna==3.10
 urllib3==2.5.0
 
-# FastAPI internal deps
+# FastAPI dependencies
 anyio==4.9.0
 h11==0.16.0
 starlette==0.46.2
@@ -41,25 +42,7 @@ annotated-types==0.7.0
 typing-inspection==0.4.1
 typing_extensions==4.14.0
 
-# Optional but useful
+# Utility
 click==8.2.1
 isodate==0.7.2
 sniffio==1.3.1
-# Changes made to this 
-
-fastapi
-uvicorn
-openai
-azure-storage-blob
-azure-cognitiveservices-speech
-python-dotenv
-
-azure-cognitiveservices-speech==1.34.1
-openai==1.30.1
-python-dotenv==1.0.1
-fastapi==0.116.0
-uvicorn==0.35.0
-
-azure-cognitiveservices-speech==1.34.1
-python-dotenv==1.0.1
-openai==1.30.1

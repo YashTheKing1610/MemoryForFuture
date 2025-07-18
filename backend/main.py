@@ -1,8 +1,7 @@
-from fastapi import FastAPI, UploadFile, Form, HTTPException, Query
+from fastapi import FastAPI, UploadFile, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 from typing import Optional
-
 import os
 import uuid
 import json
@@ -29,22 +28,22 @@ from utils.profile_utils import (
 # Load .env
 load_dotenv()
 
-# Initialize app
+# ------------------------- ✅ App Setup ------------------------- #
 app = FastAPI(title="MemoryForFuture API")
 
-# Allow all origins (use stricter CORS in production)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # For development
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Include routers
+# Routers
 app.include_router(ai_router, prefix="/ai", tags=["AI Chat"])
 app.include_router(voice_router, prefix="/voice", tags=["Voice Clone"])
 app.include_router(assistant_router, prefix="/assistant", tags=["Voice Assistant"])
+
 
 @app.get("/")
 def root():
@@ -63,6 +62,7 @@ def test_storage_access():
         return {"message": "Access failed ❌", "error": str(e)}
 
 
+# ------------------------- ✅ Upload Memory ------------------------- #
 @app.post("/upload-memory/")
 async def upload_memory(
     file: UploadFile,
@@ -82,7 +82,7 @@ async def upload_memory(
 
         file_content = await file.read()
 
-        # Upload memory file
+        # Upload file
         blob_path = upload_file_to_blob(profile_id, file_type, file_content, file_name)
 
         # Metadata
@@ -116,23 +116,41 @@ async def upload_memory(
         }
 
 
+# ------------------------- ✅ Get Memory List (Fixed) ------------------------- #
 @app.get("/get-memories/{profile_id}")
 def get_memories(profile_id: str):
     try:
         container_client = blob_service_client.get_container_client(container_name)
-        memories = get_all_memory_metadata(profile_id, container_client)
+        prefix = f"profiles/{profile_id}/metadata/"
+
+        blobs = container_client.list_blobs(name_starts_with=prefix)
+
+        memories = []
+
+        for blob in blobs:
+            if blob.name.endswith(".json"):
+                blob_client = container_client.get_blob_client(blob.name)
+                content = blob_client.download_blob().readall()
+                try:
+                    memory = json.loads(content)
+                    if "file_path" in memory:
+                        memory["content_url"] = f"https://{blob_service_client.account_name}.blob.core.windows.net/{container_name}/{memory['file_path']}"
+                    memories.append(memory)
+                except json.JSONDecodeError as err:
+                    print(f"Skipping malformed JSON: {blob.name} ❌ Error: {err}")
+
         return memories
+
     except Exception as e:
         return {"message": "Failed to fetch memories ❌", "error": str(e)}
 
 
-# ✅ Create Profile with name + relation
+# ------------------------- ✅ Create Profile ------------------------- #
 @app.post("/create-profile/")
 def create_profile(
     name: str = Form(...),
     relation: str = Form(...)
 ):
-    # Generate profile_id from name + relation
     profile_id = f"{name.lower().strip()}_{relation.lower().strip()}".replace(" ", "_")
 
     if profile_exists(profile_id):
@@ -142,16 +160,15 @@ def create_profile(
     return {**result, "profile_id": profile_id}
 
 
-# ✅ Get all profiles from Azure Blob Storage
+# ------------------------- ✅ Get All Profiles ------------------------- #
 @app.get("/get-profiles/")
 def get_profiles():
     return {"profiles": list_all_profiles()}
 
 
-# ✅ Delete Profile and All Memories
+# ------------------------- ✅ Delete Profile ------------------------- #
 @app.delete("/delete-profile/{profile_id}")
 def delete_profile(profile_id: str):
     if not profile_exists(profile_id):
         raise HTTPException(status_code=404, detail="Profile not found")
-
     return delete_profile_and_data(profile_id)
