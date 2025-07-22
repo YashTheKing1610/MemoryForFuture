@@ -4,32 +4,12 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
 import 'upload_memory_screen.dart';
+import 'ai_chat_screen.dart'; // ✅ Make sure this import exists
+import 'media_viewer_screen.dart';
+import 'package:memory_for_future/models/memory.dart';
+
 
 const String baseUrl = "http://127.0.0.1:8000"; // Update if deployed
-
-class Memory {
-  final String title;
-  final String filePath;
-  final String fileType;
-  final String contentUrl;
-
-  Memory({
-    required this.title,
-    required this.filePath,
-    required this.fileType,
-    required this.contentUrl,
-  });
-
-  factory Memory.fromJson(Map<String, dynamic> json) {
-  return Memory(
-    title: json['title'] ?? '',
-    filePath: json['file_path'] ?? '',
-    fileType: json['file_type'] ?? '',
-    contentUrl: json['content_url'] ?? '', // ✅ Use backend-provided full Azure URL
-  );
-}
-
-}
 
 class MemoryListScreen extends StatefulWidget {
   final String profileId;
@@ -63,10 +43,17 @@ class _MemoryListScreenState extends State<MemoryListScreen> with TickerProvider
     );
     if (response.statusCode == 200) {
       final List data = json.decode(response.body);
+      
       setState(() {
-        memories = data.map((m) => Memory.fromJson(m)).toList();
-        isLoading = false;
-      });
+  memories = data.map((m) => Memory.fromJson(m)).toList();
+  isLoading = false;
+
+  // 🔍 Debug each memory's fileType
+  for (var m in memories) {
+    print("DEBUG: ${m.fileType}");
+  }
+});
+
     } else {
       setState(() => isLoading = false);
       print("Failed to load memories");
@@ -75,19 +62,20 @@ class _MemoryListScreenState extends State<MemoryListScreen> with TickerProvider
   }
 
   List<Memory> filterByType(String type) {
-    return memories.where((m) => m.fileType.toLowerCase() == type.toLowerCase()).toList();
+  return memories.where((m) => m.fileType.toLowerCase().contains(type.toLowerCase())).toList();
   }
 
-  void openMemory(Memory memory) async {
-    final Uri url = Uri.parse(memory.contentUrl);
-    if (await canLaunchUrl(url)) {
-      await launchUrl(url, mode: LaunchMode.externalApplication);
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not open media')),
-      );
-    }
-  }
+
+// ✅ Add this function here (around line 75)
+void openMemory(Memory memory) {
+  Navigator.push(
+    context,
+    MaterialPageRoute(
+      builder: (_) => MediaViewerScreen(memory: memory),
+    ),
+  );
+}
+
 
   Widget buildMemoryGrid(List<Memory> memoryList) {
     return GridView.builder(
@@ -150,6 +138,7 @@ class _MemoryListScreenState extends State<MemoryListScreen> with TickerProvider
         ),
         actions: [
           IconButton(
+            icon: const Icon(Icons.add, color: Colors.cyanAccent),
             onPressed: () {
               Navigator.push(
                 context,
@@ -161,7 +150,21 @@ class _MemoryListScreenState extends State<MemoryListScreen> with TickerProvider
                 ),
               ).then((_) => fetchMemories());
             },
-            icon: const Icon(Icons.add, color: Colors.cyanAccent),
+          ),
+          IconButton( // ✅ AI Chat button added
+            icon: const Icon(Icons.chat_bubble_outline, color: Colors.cyanAccent),
+            tooltip: 'Chat with AI',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => AiChatScreen(
+                    profileId: widget.profileId,
+                    username: widget.username,
+                  ),
+                ),
+              );
+            },
           ),
         ],
         bottom: TabBar(

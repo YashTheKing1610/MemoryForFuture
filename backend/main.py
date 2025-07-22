@@ -8,12 +8,20 @@ import json
 import io
 import datetime
 
-# Routers
-from azure_openai import router as ai_router
+# Load environment variables
+load_dotenv()
+
+# Import Routers
+from routes.chat_with_ai import router as chat_ai_router
 from azure_voice import router as voice_router
 from azure_voice_assistant import router as assistant_router
+from routes.chat_with_ai import router as ai_router
+from routes.upload_memory import router as upload_router
 
-# Azure and local utils
+
+
+
+# Azure and Local Utils
 from azure_utils import upload_file_to_blob
 from utils.file_type import detect_file_type
 from config.blob_config import blob_service_client, container_name
@@ -25,31 +33,31 @@ from utils.profile_utils import (
     delete_profile_and_data
 )
 
-# Load .env
-load_dotenv()
-
 # ------------------------- ✅ App Setup ------------------------- #
 app = FastAPI(title="MemoryForFuture API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # For development
+    allow_origins=["*"],  # Allow all origins (change in production)
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Routers
-app.include_router(ai_router, prefix="/ai", tags=["AI Chat"])
+# Register Routers
+app.include_router(chat_ai_router, prefix="/ai", tags=["AI Chat"])
 app.include_router(voice_router, prefix="/voice", tags=["Voice Clone"])
 app.include_router(assistant_router, prefix="/assistant", tags=["Voice Assistant"])
+app.include_router(ai_router)
+app.include_router(upload_router)
 
-
+# ------------------------- ✅ Root Endpoint ------------------------- #
 @app.get("/")
 def root():
     return {"message": "MemoryForFuture API is running ✅"}
 
 
+# ------------------------- ✅ Storage Test Endpoint ------------------------- #
 @app.get("/test-storage-access")
 def test_storage_access():
     try:
@@ -116,7 +124,7 @@ async def upload_memory(
         }
 
 
-# ------------------------- ✅ Get Memory List (Fixed) ------------------------- #
+# ------------------------- ✅ Get Memory List ------------------------- #
 @app.get("/get-memories/{profile_id}")
 def get_memories(profile_id: str):
     try:

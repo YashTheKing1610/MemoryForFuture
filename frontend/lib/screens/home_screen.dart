@@ -5,6 +5,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:dotted_border/dotted_border.dart';
 import 'upload_memory_screen.dart';
 import 'memory_list_screen.dart';
+import 'ai_chat_screen.dart';
+
 
 class Profile {
   final String id;
