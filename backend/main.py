@@ -1,3 +1,6 @@
+from fastapi import FastAPI, File, UploadFile, Form
+import requests
+
 from fastapi import FastAPI, UploadFile, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
@@ -7,6 +10,8 @@ import uuid
 import json
 import io
 import datetime
+import logging
+logging.basicConfig(level=logging.DEBUG)
 
 # Load environment variables
 load_dotenv()
@@ -16,7 +21,7 @@ from routes.chat_with_ai import router as chat_ai_router
 from azure_voice import router as voice_router
 from azure_voice_assistant import router as assistant_router
 from routes.chat_with_ai import router as ai_router
-from routes.upload_memory import router as upload_router
+#from backend.routes.upload_memory_backup import router as upload_router
 
 
 
@@ -43,13 +48,15 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
+app = FastAPI()
+API_KEY = os.getenv("FISH_AUDIO_API_KEY")
+BASE_URL = "https://api.fish.audio/v1"
 # Register Routers
 app.include_router(chat_ai_router, prefix="/ai", tags=["AI Chat"])
 app.include_router(voice_router, prefix="/voice", tags=["Voice Clone"])
 app.include_router(assistant_router, prefix="/assistant", tags=["Voice Assistant"])
 app.include_router(ai_router)
-app.include_router(upload_router)
+#app.include_router(upload_router)
 
 # ------------------------- ✅ Root Endpoint ------------------------- #
 @app.get("/")
@@ -180,3 +187,20 @@ def delete_profile(profile_id: str):
     if not profile_exists(profile_id):
         raise HTTPException(status_code=404, detail="Profile not found")
     return delete_profile_and_data(profile_id)
+
+@app.post("/clone-voice/")
+async def clone_voice(audio: UploadFile = File(...), language: str = Form("en")):
+    url = f"{BASE_URL}/voice/clone"
+    files = {"audio": (audio.filename, await audio.read())}
+    headers = {"Authorization": f"Bearer {API_KEY}"}
+    data = {"language": language}
+    response = requests.post(url, headers=headers, files=files, data=data)
+    return response.json()
+
+@app.post("/tts-with-clone/")
+async def tts_with_clone(voice_id: str = Form(...), text: str = Form(...), language: str = Form("en")):
+    url = f"{BASE_URL}/tts"
+    headers = {"Authorization": f"Bearer {API_KEY}"}
+    data = {"voice_id": voice_id, "text": text, "language": language}
+    response = requests.post(url, headers=headers, json=data)
+    return response.content

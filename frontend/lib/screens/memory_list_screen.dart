@@ -67,14 +67,16 @@ class _MemoryListScreenState extends State<MemoryListScreen> with TickerProvider
 
 
 // ✅ Add this function here (around line 75)
+
 void openMemory(Memory memory) {
   Navigator.push(
     context,
     MaterialPageRoute(
-      builder: (_) => MediaViewerScreen(memory: memory),
+      builder: (context) => MediaViewerScreen(memory: memory),
     ),
   );
 }
+
 
 
   Widget buildMemoryGrid(List<Memory> memoryList) {
