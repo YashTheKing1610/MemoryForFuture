@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:video_player/video_player.dart';
-import 'package:audioplayers/audioplayers.dart';
+import 'package:media_kit/media_kit.dart';
+import 'package:media_kit_video/media_kit_video.dart';
 import 'package:memory_for_future/models/memory.dart';
 
 class MediaViewerScreen extends StatelessWidget {
@@ -11,7 +11,6 @@ class MediaViewerScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final fileType = memory.fileType.toLowerCase();
-    print('DEBUG: fileType = $fileType');
 
     if (fileType.contains('image')) {
       return Scaffold(
@@ -23,7 +22,11 @@ class MediaViewerScreen extends StatelessWidget {
       );
     } else if (fileType.contains('video')) {
       return VideoPlayerScreen(url: memory.contentUrl, title: memory.title);
-    } else if (fileType.contains('audio')) {
+    } else if (fileType.contains('audio') ||
+        fileType.contains('mpeg') ||
+        fileType.contains('mp3') ||
+        fileType.contains('wav') ||
+        fileType.contains('aac')) {
       return AudioPlayerScreen(url: memory.contentUrl, title: memory.title);
     } else {
       return Scaffold(
@@ -45,24 +48,22 @@ class VideoPlayerScreen extends StatefulWidget {
 }
 
 class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
-  late VideoPlayerController _controller;
-  bool _isInitialized = false;
+  late final Player _player;
+  late final VideoController _controller;
+  bool _isPlaying = false;
 
   @override
   void initState() {
     super.initState();
-    _controller = VideoPlayerController.networkUrl(Uri.parse(widget.url))
-      ..initialize().then((_) {
-        setState(() {
-          _isInitialized = true;
-          _controller.play();
-        });
-      });
+    _player = Player();
+    _controller = VideoController(_player);
+    _player.open(Media(widget.url));
+    _player.stream.playing.listen((playing) => setState(() => _isPlaying = playing));
   }
 
   @override
   void dispose() {
-    _controller.dispose();
+    _player.dispose();
     super.dispose();
   }
 
@@ -70,28 +71,23 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: Text(widget.title)),
+      backgroundColor: Colors.black,
       body: Center(
-        child: _isInitialized
-            ? AspectRatio(
-                aspectRatio: _controller.value.aspectRatio,
-                child: VideoPlayer(_controller),
-              )
-            : const CircularProgressIndicator(),
+        child: AspectRatio(
+          aspectRatio: 16 / 9,
+          child: Video(controller: _controller),
+        ),
       ),
-      floatingActionButton: _isInitialized
-          ? FloatingActionButton(
-              onPressed: () {
-                setState(() {
-                  _controller.value.isPlaying
-                      ? _controller.pause()
-                      : _controller.play();
-                });
-              },
-              child: Icon(
-                _controller.value.isPlaying ? Icons.pause : Icons.play_arrow,
-              ),
-            )
-          : null,
+      floatingActionButton: FloatingActionButton(
+        onPressed: () async {
+          if (_isPlaying) {
+            await _player.pause();
+          } else {
+            await _player.play();
+          }
+        },
+        child: Icon(_isPlaying ? Icons.pause : Icons.play_arrow),
+      ),
     );
   }
 }
@@ -107,37 +103,43 @@ class AudioPlayerScreen extends StatefulWidget {
 }
 
 class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
-  final AudioPlayer _audioPlayer = AudioPlayer();
-  bool isPlaying = false;
+  late final Player _player;
+  bool _isPlaying = false;
 
   @override
   void initState() {
     super.initState();
-    _audioPlayer.setSourceUrl(widget.url);
+    _player = Player();
+    _player.open(Media(widget.url));
+    _player.stream.playing.listen((playing) => setState(() => _isPlaying = playing));
   }
 
   @override
   void dispose() {
-    _audioPlayer.dispose();
+    _player.dispose();
     super.dispose();
   }
 
   void togglePlay() async {
-    if (isPlaying) {
-      await _audioPlayer.pause();
+    if (_isPlaying) {
+      await _player.pause();
     } else {
-      await _audioPlayer.resume();
+      await _player.play();
     }
-    setState(() => isPlaying = !isPlaying);
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: Text(widget.title)),
+      backgroundColor: Colors.black,
       body: Center(
         child: IconButton(
-          icon: Icon(isPlaying ? Icons.pause : Icons.play_arrow, size: 64),
+          icon: Icon(
+            _isPlaying ? Icons.pause_circle : Icons.play_circle,
+            size: 80,
+            color: Colors.cyanAccent,
+          ),
           onPressed: togglePlay,
         ),
       ),

@@ -1,10 +1,12 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data'; // Import for Uint8List
+import 'dart:typed_data'; // For Uint8List
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:file_picker/file_picker.dart';
-import 'package:audioplayers/audioplayers.dart';
+import 'package:media_kit/media_kit.dart';
+
+late final Player _player; // Global (can be moved into state)
 
 class AiChatScreen extends StatefulWidget {
   final String profileId;
@@ -26,18 +28,31 @@ class _AiChatScreenState extends State<AiChatScreen> {
   bool _isCloning = false;
   bool _isSynthesizing = false;
   String? _voiceId;
-  AudioPlayer? _audioPlayer;
 
-  final String apiBase = "http://127.0.0.1:8000"; // Change as needed
+  Player? _audioPlayer;
+
+  final String apiBase = "http://127.0.0.1:8000"; // Replace with your backend address
+
+  @override
+  void initState() {
+    super.initState();
+    // Initialize media_kit player here if needed, or on demand before playback
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    _audioPlayer?.dispose();
+    super.dispose();
+  }
 
   Future<void> sendMessage(String message) async {
     setState(() {
       messages.add({"sender": "user", "text": message});
     });
 
-    final url = Uri.parse("$apiBase/ai/ask");
-
     try {
+      final url = Uri.parse("$apiBase/ai/ask");
       final response = await http.post(
         url,
         headers: {"Content-Type": "application/json"},
@@ -55,7 +70,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
           messages.add({"sender": "ai", "text": reply});
         });
 
-        // If voice_id available, synthesize and play the voice reply!
+        // If voiceId is available, synthesize and play voice reply!
         if (_voiceId != null) {
           await _speakWithClone(reply, _voiceId!);
         }
@@ -75,9 +90,10 @@ class _AiChatScreenState extends State<AiChatScreen> {
   }
 
   Future<void> _pickAndCloneVoice() async {
-    FilePickerResult? result = await FilePicker.platform.pickFiles(type: FileType.audio);
+    FilePickerResult? result =
+        await FilePicker.platform.pickFiles(type: FileType.audio);
     if (result != null && result.files.single.path != null) {
-      File voiceFile = File(result.files.single.path!);
+      final File voiceFile = File(result.files.single.path!);
       await _cloneVoice(voiceFile);
     }
   }
@@ -95,15 +111,15 @@ class _AiChatScreenState extends State<AiChatScreen> {
         setState(() {
           _voiceId = result["voice_id"] ?? result["id"];
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Voice cloned! Ready for voice replies.')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Voice cloned! Ready for voice replies.')));
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text("Voice cloning failed: ${resp.reasonPhrase}")));
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Voice cloning failed: $e")));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text("Voice cloning failed: $e")));
     } finally {
       setState(() => _isCloning = false);
     }
@@ -128,13 +144,13 @@ class _AiChatScreenState extends State<AiChatScreen> {
           await _playAudioUrl(url);
         }
       } else {
-        // Play audio bytes; Here is the FIX:
+        // Play audio bytes
         final data = await respStream.stream.toBytes();
         await _playAudioBytes(data);
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("AI voice synth failed: $e")));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text("AI voice synth failed: $e")));
     } finally {
       setState(() => _isSynthesizing = false);
     }
@@ -142,21 +158,24 @@ class _AiChatScreenState extends State<AiChatScreen> {
 
   Future<void> _playAudioBytes(List<int> data) async {
     await _audioPlayer?.dispose();
-    _audioPlayer = AudioPlayer();
-    await _audioPlayer!.play(BytesSource(Uint8List.fromList(data)), volume: 1.0);
+    _audioPlayer = Player();
+    // Create a temp file to play - media_kit does not support playing bytes directly
+    // So you MUST write bytes to a temp file and play from file path
+    // We implement that below:
+
+    final tempDir = Directory.systemTemp;
+    final tempFile = await File('${tempDir.path}/temp_audio_${DateTime.now().millisecondsSinceEpoch}.wav').create();
+    await tempFile.writeAsBytes(data);
+
+    await _audioPlayer!.open(Media(tempFile.path));
+    await _audioPlayer!.play();
   }
 
   Future<void> _playAudioUrl(String url) async {
     await _audioPlayer?.dispose();
-    _audioPlayer = AudioPlayer();
-    await _audioPlayer!.play(UrlSource(url), volume: 1.0);
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    _audioPlayer?.dispose();
-    super.dispose();
+    _audioPlayer = Player();
+    await _audioPlayer!.open(Media(url));
+    await _audioPlayer!.play();
   }
 
   @override

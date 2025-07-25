@@ -1,23 +1,29 @@
 import 'package:flutter/material.dart';
-import 'screens/home_screen.dart';
+import 'package:media_kit/media_kit.dart'; // Correct import
+import 'screens/home_screen.dart'; // Update this import path if your home screen file is located elsewhere
 
 void main() {
-  runApp(const MemoryForFutureApp());
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize media_kit before running the app
+  MediaKit.ensureInitialized();
+
+  runApp(const MyApp());
 }
 
-class MemoryForFutureApp extends StatelessWidget {
-  const MemoryForFutureApp({super.key});
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Memory For Future',
+      title: 'MemoryForFuture',
       debugShowCheckedModeBanner: false,
       theme: ThemeData.dark().copyWith(
         scaffoldBackgroundColor: Colors.black,
-        primaryColor: Colors.purpleAccent,
+        primaryColor: Colors.cyanAccent,
       ),
-      home: const HomeScreen(),
+      home: const HomeScreen(), // Replace with your initial screen widget if different
     );
   }
 }

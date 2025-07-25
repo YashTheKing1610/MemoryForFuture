@@ -2,14 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'package:url_launcher/url_launcher.dart';
 import 'upload_memory_screen.dart';
-import 'ai_chat_screen.dart'; // ✅ Make sure this import exists
+import 'ai_chat_screen.dart';
 import 'media_viewer_screen.dart';
 import 'package:memory_for_future/models/memory.dart';
 
-
-const String baseUrl = "http://127.0.0.1:8000"; // Update if deployed
+const String baseUrl = "http://127.0.0.1:8000"; // Update if needed
 
 class MemoryListScreen extends StatefulWidget {
   final String profileId;
@@ -43,41 +41,53 @@ class _MemoryListScreenState extends State<MemoryListScreen> with TickerProvider
     );
     if (response.statusCode == 200) {
       final List data = json.decode(response.body);
-      
       setState(() {
-  memories = data.map((m) => Memory.fromJson(m)).toList();
-  isLoading = false;
-
-  // 🔍 Debug each memory's fileType
-  for (var m in memories) {
-    print("DEBUG: ${m.fileType}");
-  }
-});
-
+        memories = data.map((m) => Memory.fromJson(m)).toList();
+        isLoading = false;
+        // Debug file types:
+        for (var m in memories) {
+          print("DEBUG: Memory title=${m.title}, fileType=${m.fileType}");
+        }
+      });
     } else {
       setState(() => isLoading = false);
       print("Failed to load memories");
     }
-    print("Fetched memories: $memories");
+  }
+
+  // Helper methods to detect media types robustly
+  bool isImage(String fileType) => fileType.toLowerCase().contains('image');
+  bool isVideo(String fileType) => fileType.toLowerCase().contains('video');
+  bool isAudio(String fileType) => fileType.toLowerCase().contains('audio');
+  bool isDocument(String fileType) {
+    final type = fileType.toLowerCase();
+    return type.contains('pdf') || type.contains('doc') || type.contains('text') || type.contains('plain');
   }
 
   List<Memory> filterByType(String type) {
-  return memories.where((m) => m.fileType.toLowerCase().contains(type.toLowerCase())).toList();
+    if (type.toLowerCase() == 'all') return memories;
+    switch (type.toLowerCase()) {
+      case 'image':
+        return memories.where((m) => isImage(m.fileType)).toList();
+      case 'video':
+        return memories.where((m) => isVideo(m.fileType)).toList();
+      case 'audio':
+        return memories.where((m) => isAudio(m.fileType)).toList();
+      case 'document':
+        return memories.where((m) => isDocument(m.fileType)).toList();
+      default:
+        return memories;
+    }
   }
 
-
-// ✅ Add this function here (around line 75)
-
-void openMemory(Memory memory) {
-  Navigator.push(
-    context,
-    MaterialPageRoute(
-      builder: (context) => MediaViewerScreen(memory: memory),
-    ),
-  );
-}
-
-
+  void openMemory(Memory memory) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => MediaViewerScreen(memory: memory),
+      ),
+    );
+  }
 
   Widget buildMemoryGrid(List<Memory> memoryList) {
     return GridView.builder(
@@ -88,26 +98,27 @@ void openMemory(Memory memory) {
       itemCount: memoryList.length,
       itemBuilder: (context, index) {
         final memory = memoryList[index];
+        final fileType = memory.fileType.toLowerCase();
         return GestureDetector(
           onTap: () => openMemory(memory),
           child: Container(
             decoration: BoxDecoration(
               border: Border.all(color: Colors.cyanAccent),
               borderRadius: BorderRadius.circular(12),
-              image: memory.fileType == 'image'
+              image: isImage(fileType)
                   ? DecorationImage(image: NetworkImage(memory.contentUrl), fit: BoxFit.cover)
                   : null,
-              color: memory.fileType != 'image' ? Colors.black54 : null,
+              color: !isImage(fileType) ? Colors.black54 : null,
             ),
             alignment: Alignment.center,
-            child: memory.fileType != 'image'
+            child: !isImage(fileType)
                 ? Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Icon(
-                        memory.fileType == 'video'
+                        isVideo(fileType)
                             ? Icons.play_circle_fill
-                            : memory.fileType == 'audio'
+                            : isAudio(fileType)
                                 ? Icons.audiotrack
                                 : Icons.insert_drive_file,
                         color: Colors.white,
@@ -136,7 +147,8 @@ void openMemory(Memory memory) {
         backgroundColor: Colors.black,
         title: Text(
           "Memories of ${widget.username}",
-          style: GoogleFonts.poppins(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+          style: GoogleFonts.poppins(
+              color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
         ),
         actions: [
           IconButton(
@@ -153,7 +165,7 @@ void openMemory(Memory memory) {
               ).then((_) => fetchMemories());
             },
           ),
-          IconButton( // ✅ AI Chat button added
+          IconButton(
             icon: const Icon(Icons.chat_bubble_outline, color: Colors.cyanAccent),
             tooltip: 'Chat with AI',
             onPressed: () {
@@ -188,7 +200,7 @@ void openMemory(Memory memory) {
           : TabBarView(
               controller: _tabController,
               children: [
-                buildMemoryGrid(memories),
+                buildMemoryGrid(filterByType('all')),
                 buildMemoryGrid(filterByType('image')),
                 buildMemoryGrid(filterByType('video')),
                 buildMemoryGrid(filterByType('audio')),
