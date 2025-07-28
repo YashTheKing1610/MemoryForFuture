@@ -1,4 +1,4 @@
-import 'dart:ui'; // for ImageFilter
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
@@ -16,10 +16,10 @@ class MemoryListScreen extends StatefulWidget {
   final String username;
 
   const MemoryListScreen({
-    super.key,
+    Key? key,
     required this.profileId,
     required this.username,
-  });
+  }) : super(key: key);
 
   @override
   State<MemoryListScreen> createState() => _MemoryListScreenState();
@@ -27,15 +27,24 @@ class MemoryListScreen extends StatefulWidget {
 
 class _MemoryListScreenState extends State<MemoryListScreen>
     with TickerProviderStateMixin {
-  late final TabController _tabController;
+  TabController? _tabController;
   List<Memory> memories = [];
   bool isLoading = true;
+
+  final List<String> tabs = ['ALL', 'IMAGES', 'VIDEOS', 'AUDIOS', 'DOCUMENTS'];
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 5, vsync: this);
+    _tabController = TabController(length: tabs.length, vsync: this);
     fetchMemories();
+  }
+
+  @override
+  void dispose() {
+    _tabController?.dispose();
+    _tabController = null;
+    super.dispose();
   }
 
   Future<void> fetchMemories() async {
@@ -45,23 +54,30 @@ class _MemoryListScreenState extends State<MemoryListScreen>
           .get(Uri.parse('$baseUrl/get-memories/${widget.profileId}'));
       if (response.statusCode == 200) {
         final List data = json.decode(response.body);
+        if (!mounted) return;
         setState(() {
           memories = data.map((m) => Memory.fromJson(m)).toList();
           isLoading = false;
         });
       } else {
+        if (!mounted) return;
         setState(() => isLoading = false);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Failed to load memories'),
+            backgroundColor: Colors.redAccent,
+          ));
+        }
+      }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => isLoading = false);
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           content: Text('Failed to load memories'),
           backgroundColor: Colors.redAccent,
         ));
       }
-    } catch (_) {
-      setState(() => isLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Failed to load memories'),
-        backgroundColor: Colors.redAccent,
-      ));
     }
   }
 
@@ -203,8 +219,7 @@ class _MemoryListScreenState extends State<MemoryListScreen>
                     child: BackdropFilter(
                       filter: ImageFilter.blur(sigmaX: 11, sigmaY: 11),
                       child: Container(
-                        color: Colors.black
-                            .withOpacity(isImage(fileType) ? 0.23 : 0.27),
+                        color: Colors.black.withOpacity(isImage(fileType) ? 0.23 : 0.27),
                       ),
                     ),
                   ),
@@ -213,10 +228,8 @@ class _MemoryListScreenState extends State<MemoryListScreen>
                         ? Align(
                             alignment: Alignment.bottomCenter,
                             child: Container(
-                              margin: const EdgeInsets.symmetric(
-                                  horizontal: 14, vertical: 16),
-                              padding: const EdgeInsets.symmetric(
-                                  vertical: 5, horizontal: 16),
+                              margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+                              padding: const EdgeInsets.symmetric(vertical: 5, horizontal: 16),
                               decoration: BoxDecoration(
                                 color: Colors.black.withOpacity(0.6),
                                 borderRadius: BorderRadius.circular(15),
@@ -267,13 +280,11 @@ class _MemoryListScreenState extends State<MemoryListScreen>
                               ),
                               const SizedBox(height: 14),
                               Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 14, vertical: 6),
+                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                                 decoration: BoxDecoration(
                                   color: Colors.black.withOpacity(0.56),
                                   borderRadius: BorderRadius.circular(15),
-                                  border: Border.all(
-                                      color: glow.withOpacity(0.3), width: 1),
+                                  border: Border.all(color: glow.withOpacity(0.3), width: 1),
                                 ),
                                 child: Text(
                                   memory.title,
@@ -299,13 +310,12 @@ class _MemoryListScreenState extends State<MemoryListScreen>
 
   @override
   Widget build(BuildContext context) {
-    final List<String> tabs = [
-      'ALL',
-      'IMAGES',
-      'VIDEOS',
-      'AUDIOS',
-      'DOCUMENTS',
-    ];
+    if (_tabController == null) {
+      // This case is unlikely now but safe fallback
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
 
     return Scaffold(
       backgroundColor: const Color(0xFF0c111c),
@@ -336,9 +346,7 @@ class _MemoryListScreenState extends State<MemoryListScreen>
               ),
               child: Center(
                 child: Text(
-                  widget.username.isNotEmpty
-                      ? widget.username[0].toUpperCase()
-                      : '',
+                  widget.username.isNotEmpty ? widget.username[0].toUpperCase() : '',
                   style: GoogleFonts.russoOne(
                     color: Colors.white,
                     fontSize: 22,
@@ -377,8 +385,7 @@ class _MemoryListScreenState extends State<MemoryListScreen>
                 ),
               ).then((_) => fetchMemories());
             },
-            icon: const Icon(Icons.add_circle_outline_rounded,
-                color: Colors.cyanAccent, size: 28),
+            icon: const Icon(Icons.add_circle_outline_rounded, color: Colors.cyanAccent, size: 28),
             tooltip: 'Add Memory',
           ),
           IconButton(
@@ -393,8 +400,7 @@ class _MemoryListScreenState extends State<MemoryListScreen>
                 ),
               );
             },
-            icon: const Icon(Icons.chat_bubble_outline_rounded,
-                color: Colors.purpleAccent, size: 27),
+            icon: const Icon(Icons.chat_bubble_outline_rounded, color: Colors.purpleAccent, size: 27),
             tooltip: 'Chat with AI',
           ),
           const SizedBox(width: 12),
@@ -404,18 +410,15 @@ class _MemoryListScreenState extends State<MemoryListScreen>
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
             child: TabBar(
-              controller: _tabController,
+              controller: _tabController!,
               indicator: ShapeDecoration(
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10)),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 gradient: const LinearGradient(
                   colors: [Colors.cyanAccent, Colors.purpleAccent],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
-                shadows: const [
-                  BoxShadow(color: Colors.white24, blurRadius: 5)
-                ],
+                shadows: const [BoxShadow(color: Colors.white24, blurRadius: 5)],
               ),
               labelStyle: GoogleFonts.orbitron(
                 fontWeight: FontWeight.w600,
@@ -431,13 +434,10 @@ class _MemoryListScreenState extends State<MemoryListScreen>
         ),
       ),
       body: isLoading
-          ? const Center(
-              child: CircularProgressIndicator(color: Colors.cyanAccent))
+          ? const Center(child: CircularProgressIndicator(color: Colors.cyanAccent))
           : TabBarView(
-              controller: _tabController,
-              children: tabs
-                  .map((tab) => buildMemoryGrid(filterByType(tab.toLowerCase())))
-                  .toList(),
+              controller: _tabController!,
+              children: tabs.map((tab) => buildMemoryGrid(filterByType(tab.toLowerCase()))).toList(),
             ),
       floatingActionButton: Padding(
         padding: const EdgeInsets.only(bottom: 24),

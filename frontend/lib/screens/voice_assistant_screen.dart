@@ -1,87 +1,97 @@
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
+import '../services/azure_stt_service.dart';
+import '../services/ai_chat_service.dart';
+import '../services/azure_tts_service.dart';
 
-class AssistantScreen extends StatefulWidget {
-  const AssistantScreen({super.key});
+class VoiceAssistantScreen extends StatefulWidget {
+  const VoiceAssistantScreen({Key? key}) : super(key: key);
 
   @override
-  State<AssistantScreen> createState() => _AssistantScreenState();
+  State<VoiceAssistantScreen> createState() => _VoiceAssistantScreenState();
 }
 
-class _AssistantScreenState extends State<AssistantScreen> {
-  final TextEditingController _controller = TextEditingController();
-  String _response = "";
-  bool _isLoading = false;
+class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
+  final AzureSTTService _sttService = AzureSTTService();
+  final AiChatService _aiService = AiChatService();
+  final AzureTTSService _ttsService = AzureTTSService();
 
-  Future<void> sendQuery(String query) async {
-    setState(() {
-      _isLoading = true;
-      _response = "";
-    });
-    
-   // const apiUrl = "http://192.168.31.46:8000/voice-chat"; // ← your actual IP address
-    const apiUrl = "http://127.0.0.1:8000/voice-chat"; // your backend endpoint
-    final profileId = "testuser001"; // use the correct profile_id
+  String userText = '';
+  String aiReply = '';
+  bool isListening = false;
+  bool isProcessing = false;
 
-    final request = http.MultipartRequest('POST', Uri.parse(apiUrl));
-    request.fields['profile_id'] = profileId;
-    request.fields['question'] = query;
-
-    try {
-      final streamedResponse = await request.send();
-      final response = await http.Response.fromStream(streamedResponse);
-
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        setState(() {
-          _response = data['response_text'];
-        });
-      } else {
-        setState(() {
-          _response = "Error: ${response.body}";
-        });
-      }
-    } catch (e) {
+  void _toggleListening() async {
+    if (isListening) {
+      await _sttService.stopListening();
+      setState(() => isListening = false);
+    } else {
       setState(() {
-        _response = "Failed to connect: $e";
+        isListening = true;
+        userText = '';
+        aiReply = '';
+        isProcessing = false;
       });
-    } finally {
-      setState(() {
-        _isLoading = false;
+      await _sttService.startListening((text, {isFinal = false}) async {
+        setState(() => userText = text);
+        if (isFinal) {
+          setState(() => isProcessing = true);
+          final reply = await _aiService.getChatReply(text);
+          setState(() {
+            aiReply = reply;
+            isProcessing = false;
+          });
+          await _ttsService.speak(reply);
+        }
       });
     }
   }
 
   @override
+  void dispose() {
+    _sttService.stopListening();
+    _ttsService.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("AI Voice Assistant")),
+      backgroundColor: Colors.black,
+      appBar: AppBar(title: const Text('AI Voice Chat')),
       body: Padding(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.all(32),
         child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            TextField(
-              controller: _controller,
-              decoration: const InputDecoration(
-                labelText: 'Ask me anything...',
-                border: OutlineInputBorder(),
-              ),
-              onSubmitted: sendQuery,
+            Text(
+              isListening ? "Listening..." : "Press the mic to start speaking.",
+              style: const TextStyle(fontSize: 18, color: Colors.cyanAccent),
             ),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: () => sendQuery(_controller.text),
-              child: const Text("Send"),
+            const SizedBox(height: 18),
+            Text(
+              'You: $userText',
+              style: const TextStyle(fontSize: 20, color: Colors.white),
             ),
-            const SizedBox(height: 24),
-            if (_isLoading)
-              const CircularProgressIndicator()
+            const Divider(height: 36, thickness: 1, color: Colors.grey),
+            if (isProcessing)
+              const CircularProgressIndicator(color: Colors.cyanAccent)
             else
               Text(
-                _response,
-                style: const TextStyle(fontSize: 18),
+                'AI: $aiReply',
+                style: const TextStyle(fontSize: 20, color: Colors.greenAccent),
               ),
+            const SizedBox(height: 40),
+            ElevatedButton.icon(
+              onPressed: _toggleListening,
+              icon: Icon(isListening ? Icons.mic_off : Icons.mic),
+              label: Text(isListening ? 'Stop Listening' : 'Start Speaking'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: isListening ? Colors.redAccent : Colors.cyanAccent,
+                foregroundColor: Colors.black,
+                minimumSize: const Size(210, 48),
+                textStyle: const TextStyle(fontSize: 17),
+              ),
+            )
           ],
         ),
       ),

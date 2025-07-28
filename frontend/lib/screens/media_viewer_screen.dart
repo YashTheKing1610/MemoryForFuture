@@ -1,12 +1,22 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
-import 'package:media_kit_video/media_kit_video.dart';
-import 'package:memory_for_future/models/memory.dart';
+import 'package:media_kit/video.dart';
+import 'package:media_kit/video_player.dart';
+import 'package:media_kit/media_kit.dart';
+import 'package:media_kit/video_player.dart';
+import 'package:media_kit/video_player.dart';
+import 'package:media_kit/media_kit.dart';
+import 'package:media_kit/video_player.dart';
+
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 import 'package:open_file/open_file.dart';
 import 'package:http/http.dart' as http;
+import 'dart:convert';
 
-// Helper for inline TXT rendering
+import 'package:memory_for_future/models.dart'; // adjust import to your actual model path
+
+// Helper to fetch text content from URL for displaying .txt files inline
 Future<String> fetchTextFile(String url) async {
   final resp = await http.get(Uri.parse(url));
   if (resp.statusCode == 200) {
@@ -21,15 +31,14 @@ class MediaViewerScreen extends StatelessWidget {
   const MediaViewerScreen({Key? key, required this.memory}) : super(key: key);
 
   bool isDocument(String fileType) {
-    // Checks for "pdf", "doc", "docx", "txt", "rtf", "text", "plain"
     final type = fileType.toLowerCase();
     return type.contains('pdf') ||
         type.contains('doc') ||
         type.contains('docx') ||
-        type.contains('text') ||
-        type.contains('plain') ||
         type.contains('txt') ||
-        type.contains('rtf');
+        type.contains('text') ||
+        type.contains('rtf') ||
+        type.contains('plain');
   }
 
   @override
@@ -38,29 +47,32 @@ class MediaViewerScreen extends StatelessWidget {
 
     if (fileType.contains('image')) {
       return Scaffold(
-        appBar: AppBar(title: Text(memory.title)),
         backgroundColor: Colors.black,
-        body: Center(
-          child: Image.network(memory.contentUrl, fit: BoxFit.contain),
-        ),
+        appBar: AppBar(title: Text(memory.title)),
+        body: Center(child: Image.network(memory.contentUrl, fit: BoxFit.contain)),
       );
-    } else if (fileType.contains('video')) {
+    }
+
+    if (fileType.contains('video')) {
       return VideoPlayerScreen(url: memory.contentUrl, title: memory.title);
-    } else if (fileType.contains('audio') ||
+    }
+
+    if (fileType.contains('audio') ||
         fileType.contains('mpeg') ||
         fileType.contains('mp3') ||
         fileType.contains('wav') ||
         fileType.contains('aac')) {
       return AudioPlayerScreen(url: memory.contentUrl, title: memory.title);
-    } else if (fileType.contains('pdf')) {
-      // Inline PDF viewer
+    }
+
+    if (fileType.contains('pdf')) {
       return Scaffold(
         appBar: AppBar(title: Text(memory.title)),
-        backgroundColor: Colors.black,
         body: SfPdfViewer.network(memory.contentUrl),
       );
-    } else if (fileType.contains('txt') || fileType.contains('plain') || fileType.contains('text')) {
-      // Inline text viewer
+    }
+
+    if (fileType.contains('txt') || fileType.contains('text') || fileType.contains('plain')) {
       return Scaffold(
         appBar: AppBar(title: Text(memory.title)),
         body: FutureBuilder<String>(
@@ -69,57 +81,52 @@ class MediaViewerScreen extends StatelessWidget {
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const Center(child: CircularProgressIndicator());
             } else if (snapshot.hasError) {
-              return const Center(child: Text('Error loading file'));
-            } else {
-              return SingleChildScrollView(
-                padding: const EdgeInsets.all(18.0),
-                child: SelectableText(
-                  snapshot.data ?? '',
-                  style: const TextStyle(fontSize: 16),
-                ),
-              );
+              return const Center(child: Text("Failed to load text content."));
             }
+            return SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: SelectableText(snapshot.data ?? ''),
+            );
           },
         ),
       );
-    } else if (fileType.contains('doc') || fileType.contains('docx') || fileType.contains('rtf')) {
-      // Open via OpenFile
+    }
+
+    if (isDocument(fileType)) {
       return Scaffold(
         appBar: AppBar(title: Text(memory.title)),
         body: Center(
           child: ElevatedButton.icon(
             icon: const Icon(Icons.open_in_new),
-            label: const Text('Open Document'),
+            label: const Text("Open Document"),
             onPressed: () async {
               final result = await OpenFile.open(memory.contentUrl);
               if (result.type != ResultType.done) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Could not open document')),
-                );
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                  content: Text("Could not open document"),
+                ));
               }
             },
           ),
         ),
       );
-    } else {
-      return Scaffold(
-        appBar: AppBar(title: const Text("Unsupported")),
-        body: const Center(child: Text("Unsupported file type")),
-      );
     }
+
+    return Scaffold(
+      appBar: AppBar(title: const Text("Unsupported")),
+      body: const Center(child: Text("Unsupported file type")),
+    );
   }
 }
-
-// --- Video and Audio Player Screens (Unchanged from your code) ---
 
 class VideoPlayerScreen extends StatefulWidget {
   final String url;
   final String title;
 
-  const VideoPlayerScreen({required this.url, required this.title});
+  const VideoPlayerScreen({Key? key, required this.url, required this.title}) : super(key: key);
 
   @override
-  _VideoPlayerScreenState createState() => _VideoPlayerScreenState();
+  State<VideoPlayerScreen> createState() => _VideoPlayerScreenState();
 }
 
 class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
@@ -130,10 +137,16 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   @override
   void initState() {
     super.initState();
+    MediaKit.ensureInitialized(); // **Important!**
+
     _player = Player();
     _controller = VideoController(_player);
     _player.open(Media(widget.url));
-    _player.stream.playing.listen((playing) => setState(() => _isPlaying = playing));
+    _player.stream.playing.listen((playing) {
+      setState(() {
+        _isPlaying = playing;
+      });
+    });
   }
 
   @override
@@ -145,8 +158,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(widget.title)),
       backgroundColor: Colors.black,
+      appBar: AppBar(title: Text(widget.title)),
       body: Center(
         child: AspectRatio(
           aspectRatio: 16 / 9,
@@ -171,10 +184,10 @@ class AudioPlayerScreen extends StatefulWidget {
   final String url;
   final String title;
 
-  const AudioPlayerScreen({required this.url, required this.title});
+  const AudioPlayerScreen({Key? key, required this.url, required this.title}) : super(key: key);
 
   @override
-  _AudioPlayerScreenState createState() => _AudioPlayerScreenState();
+  State<AudioPlayerScreen> createState() => _AudioPlayerScreenState();
 }
 
 class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
@@ -184,9 +197,15 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
   @override
   void initState() {
     super.initState();
+    MediaKit.ensureInitialized(); // **Important!**
+
     _player = Player();
     _player.open(Media(widget.url));
-    _player.stream.playing.listen((playing) => setState(() => _isPlaying = playing));
+    _player.stream.playing.listen((playing) {
+      setState(() {
+        _isPlaying = playing;
+      });
+    });
   }
 
   @override
@@ -206,15 +225,12 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(widget.title)),
       backgroundColor: Colors.black,
+      appBar: AppBar(title: Text(widget.title)),
       body: Center(
         child: IconButton(
-          icon: Icon(
-            _isPlaying ? Icons.pause_circle : Icons.play_circle,
-            size: 80,
-            color: Colors.cyanAccent,
-          ),
+          icon: Icon(_isPlaying ? Icons.pause_circle : Icons.play_circle,
+              size: 80, color: Colors.cyanAccent),
           onPressed: togglePlay,
         ),
       ),

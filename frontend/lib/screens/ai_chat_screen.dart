@@ -1,12 +1,13 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data'; // For Uint8List
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:file_picker/file_picker.dart';
 import 'package:media_kit/media_kit.dart';
 
-late final Player _player; // Global (can be moved into state)
+// Adjust this import path if your ai_chat_screen.dart and voice_assistant_screen.dart location differ
+import 'voice_assistant_screen.dart';
 
 class AiChatScreen extends StatefulWidget {
   final String profileId;
@@ -28,16 +29,8 @@ class _AiChatScreenState extends State<AiChatScreen> {
   bool _isCloning = false;
   bool _isSynthesizing = false;
   String? _voiceId;
-
   Player? _audioPlayer;
-
-  final String apiBase = "http://127.0.0.1:8000"; // Replace with your backend address
-
-  @override
-  void initState() {
-    super.initState();
-    // Initialize media_kit player here if needed, or on demand before playback
-  }
+  final String apiBase = "http://127.0.0.1:8000";
 
   @override
   void dispose() {
@@ -70,7 +63,6 @@ class _AiChatScreenState extends State<AiChatScreen> {
           messages.add({"sender": "ai", "text": reply});
         });
 
-        // If voiceId is available, synthesize and play voice reply!
         if (_voiceId != null) {
           await _speakWithClone(reply, _voiceId!);
         }
@@ -144,7 +136,6 @@ class _AiChatScreenState extends State<AiChatScreen> {
           await _playAudioUrl(url);
         }
       } else {
-        // Play audio bytes
         final data = await respStream.stream.toBytes();
         await _playAudioBytes(data);
       }
@@ -159,14 +150,9 @@ class _AiChatScreenState extends State<AiChatScreen> {
   Future<void> _playAudioBytes(List<int> data) async {
     await _audioPlayer?.dispose();
     _audioPlayer = Player();
-    // Create a temp file to play - media_kit does not support playing bytes directly
-    // So you MUST write bytes to a temp file and play from file path
-    // We implement that below:
-
     final tempDir = Directory.systemTemp;
     final tempFile = await File('${tempDir.path}/temp_audio_${DateTime.now().millisecondsSinceEpoch}.wav').create();
     await tempFile.writeAsBytes(data);
-
     await _audioPlayer!.open(Media(tempFile.path));
     await _audioPlayer!.play();
   }
@@ -290,6 +276,19 @@ class _AiChatScreenState extends State<AiChatScreen> {
                       sendMessage(text);
                       _controller.clear();
                     }
+                  },
+                ),
+                const SizedBox(width: 5),
+                IconButton(
+                  icon: const Icon(Icons.record_voice_over, color: Colors.greenAccent),
+                  tooltip: "Voice Assistant",
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const VoiceAssistantScreen(),
+                      ),
+                    );
                   },
                 ),
               ],
