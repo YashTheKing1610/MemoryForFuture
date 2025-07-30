@@ -1,26 +1,21 @@
+import 'dart:convert';
 import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
-import 'package:media_kit/video.dart';
-import 'package:media_kit/video_player.dart';
-import 'package:media_kit/media_kit.dart';
-import 'package:media_kit/video_player.dart';
-import 'package:media_kit/video_player.dart';
-import 'package:media_kit/media_kit.dart';
-import 'package:media_kit/video_player.dart';
-
+import 'package:media_kit_video/video.dart';             // ✅ Correct
+import 'package:media_kit_video/video_controller.dart';  // ✅ Correct
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 import 'package:open_file/open_file.dart';
 import 'package:http/http.dart' as http;
-import 'dart:convert';
 
-import 'package:memory_for_future/models.dart'; // adjust import to your actual model path
+import '../models/memory.dart'; // ✅ Keep as is
 
-// Helper to fetch text content from URL for displaying .txt files inline
+// Helper to fetch text content from a URL (for .txt files)
 Future<String> fetchTextFile(String url) async {
-  final resp = await http.get(Uri.parse(url));
-  if (resp.statusCode == 200) {
-    return resp.body;
+  final response = await http.get(Uri.parse(url));
+  if (response.statusCode == 200) {
+    return response.body;
   }
   throw Exception('Failed to load text file');
 }
@@ -49,7 +44,13 @@ class MediaViewerScreen extends StatelessWidget {
       return Scaffold(
         backgroundColor: Colors.black,
         appBar: AppBar(title: Text(memory.title)),
-        body: Center(child: Image.network(memory.contentUrl, fit: BoxFit.contain)),
+        body: Center(
+          child: Image.network(
+            memory.contentUrl,
+            fit: BoxFit.contain,
+            errorBuilder: (context, error, stackTrace) => const Center(child: Icon(Icons.broken_image)),
+          ),
+        ),
       );
     }
 
@@ -80,8 +81,9 @@ class MediaViewerScreen extends StatelessWidget {
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const Center(child: CircularProgressIndicator());
-            } else if (snapshot.hasError) {
-              return const Center(child: Text("Failed to load text content."));
+            }
+            if (snapshot.hasError) {
+              return const Center(child: Text('Failed to load text content.'));
             }
             return SingleChildScrollView(
               padding: const EdgeInsets.all(16),
@@ -98,12 +100,12 @@ class MediaViewerScreen extends StatelessWidget {
         body: Center(
           child: ElevatedButton.icon(
             icon: const Icon(Icons.open_in_new),
-            label: const Text("Open Document"),
+            label: const Text('Open Document'),
             onPressed: () async {
               final result = await OpenFile.open(memory.contentUrl);
               if (result.type != ResultType.done) {
                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                  content: Text("Could not open document"),
+                  content: Text('Could not open document.'),
                 ));
               }
             },
@@ -112,9 +114,10 @@ class MediaViewerScreen extends StatelessWidget {
       );
     }
 
+    // Unsupported file type
     return Scaffold(
-      appBar: AppBar(title: const Text("Unsupported")),
-      body: const Center(child: Text("Unsupported file type")),
+      appBar: AppBar(title: const Text('Unsupported')),
+      body: const Center(child: Text('Unsupported file type')),
     );
   }
 }
@@ -137,7 +140,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   @override
   void initState() {
     super.initState();
-    MediaKit.ensureInitialized(); // **Important!**
+    MediaKit.ensureInitialized(); // Important to prevent initialization error
 
     _player = Player();
     _controller = VideoController(_player);
@@ -197,7 +200,7 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
   @override
   void initState() {
     super.initState();
-    MediaKit.ensureInitialized(); // **Important!**
+    MediaKit.ensureInitialized();  // Important for initialization
 
     _player = Player();
     _player.open(Media(widget.url));
@@ -229,8 +232,11 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
       appBar: AppBar(title: Text(widget.title)),
       body: Center(
         child: IconButton(
-          icon: Icon(_isPlaying ? Icons.pause_circle : Icons.play_circle,
-              size: 80, color: Colors.cyanAccent),
+          icon: Icon(
+            _isPlaying ? Icons.pause_circle : Icons.play_circle,
+            size: 80,
+            color: Colors.cyanAccent,
+          ),
           onPressed: togglePlay,
         ),
       ),

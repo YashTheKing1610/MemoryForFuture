@@ -96,3 +96,18 @@ async def search_memories(req: MemorySearchRequest):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+def get_ai_response(prompt: str) -> str:
+    try:
+        response = client.chat.completions.create(
+            model=AZURE_DEPLOYMENT_NAME,
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": prompt}
+            ]
+        )
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        print(f"[ERROR] Failed to get AI response: {e}")
+        return "I'm sorry, there was an error generating the response."

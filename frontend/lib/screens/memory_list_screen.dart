@@ -16,6 +16,7 @@ class MemoryListScreen extends StatefulWidget {
   final String username;
 
   const MemoryListScreen({
+    
     Key? key,
     required this.profileId,
     required this.username,
