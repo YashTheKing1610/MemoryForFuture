@@ -32,7 +32,7 @@ class MemorySearchRequest(BaseModel):
     profile_id: str
 
 # ---------------------- ✅ /ai/ask ---------------------- #
-@router.post("/ai/ask")
+@router.post("/ask")
 async def ask_gpt(request: ChatRequest):
     try:
         # Get all metadata for the profile

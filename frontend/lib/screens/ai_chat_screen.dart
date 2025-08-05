@@ -1,13 +1,36 @@
 import 'dart:convert';
-import 'dart:io';
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'package:file_picker/file_picker.dart';
-import 'package:media_kit/media_kit.dart';
+import 'package:memory_for_future/screens/voice_clone_screen.dart';
 
-// Adjust this import path if your ai_chat_screen.dart and voice_assistant_screen.dart location differ
-import 'voice_assistant_screen.dart';
+class PersoVoiceChatScreen extends StatelessWidget {
+  final String profileId;
+  final String username;
+
+  const PersoVoiceChatScreen({
+    Key? key,
+    required this.profileId,
+    required this.username,
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text("Voice-to-Voice with ${username}'s AI"),
+        backgroundColor: Colors.black87,
+      ),
+      body: Center(
+        child: Text(
+          "Coming soon: Voice-to-voice chat using Azure Speech Services & PersoAI!",
+          style: TextStyle(fontSize: 16, color: Colors.white70),
+          textAlign: TextAlign.center,
+        ),
+      ),
+      backgroundColor: const Color(0xFF121212),
+    );
+  }
+}
 
 class AiChatScreen extends StatefulWidget {
   final String profileId;
@@ -26,16 +49,11 @@ class AiChatScreen extends StatefulWidget {
 class _AiChatScreenState extends State<AiChatScreen> {
   final TextEditingController _controller = TextEditingController();
   List<Map<String, String>> messages = [];
-  bool _isCloning = false;
-  bool _isSynthesizing = false;
-  String? _voiceId;
-  Player? _audioPlayer;
   final String apiBase = "http://127.0.0.1:8000";
 
   @override
   void dispose() {
     _controller.dispose();
-    _audioPlayer?.dispose();
     super.dispose();
   }
 
@@ -62,16 +80,9 @@ class _AiChatScreenState extends State<AiChatScreen> {
         setState(() {
           messages.add({"sender": "ai", "text": reply});
         });
-
-        if (_voiceId != null) {
-          await _speakWithClone(reply, _voiceId!);
-        }
       } else {
         setState(() {
-          messages.add({
-            "sender": "ai",
-            "text": "⚠️ Error: ${response.statusCode}"
-          });
+          messages.add({"sender": "ai", "text": "⚠️ Error: ${response.statusCode}"});
         });
       }
     } catch (e) {
@@ -81,87 +92,16 @@ class _AiChatScreenState extends State<AiChatScreen> {
     }
   }
 
-  Future<void> _pickAndCloneVoice() async {
-    FilePickerResult? result =
-        await FilePicker.platform.pickFiles(type: FileType.audio);
-    if (result != null && result.files.single.path != null) {
-      final File voiceFile = File(result.files.single.path!);
-      await _cloneVoice(voiceFile);
-    }
-  }
-
-  Future<void> _cloneVoice(File audioFile) async {
-    setState(() => _isCloning = true);
-    try {
-      var req = http.MultipartRequest("POST", Uri.parse('$apiBase/clone-voice/'));
-      req.files.add(await http.MultipartFile.fromPath("audio", audioFile.path));
-      req.fields['language'] = "en";
-      var respStream = await req.send();
-      var resp = await http.Response.fromStream(respStream);
-      if (resp.statusCode == 200) {
-        var result = jsonDecode(resp.body);
-        setState(() {
-          _voiceId = result["voice_id"] ?? result["id"];
-        });
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Voice cloned! Ready for voice replies.')));
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text("Voice cloning failed: ${resp.reasonPhrase}")));
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text("Voice cloning failed: $e")));
-    } finally {
-      setState(() => _isCloning = false);
-    }
-  }
-
-  Future<void> _speakWithClone(String text, String voiceId) async {
-    setState(() => _isSynthesizing = true);
-    try {
-      var req = http.MultipartRequest("POST", Uri.parse('$apiBase/speak-with-clone/'));
-      req.fields['voice_id'] = voiceId;
-      req.fields['text'] = text;
-      req.fields['language'] = "en";
-
-      var respStream = await req.send();
-
-      final contentType = respStream.headers['content-type'] ?? '';
-      if (contentType.contains("application/json")) {
-        final body = await respStream.stream.transform(utf8.decoder).join();
-        final decoded = jsonDecode(body);
-        String? url = decoded['url'];
-        if (url != null) {
-          await _playAudioUrl(url);
-        }
-      } else {
-        final data = await respStream.stream.toBytes();
-        await _playAudioBytes(data);
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text("AI voice synth failed: $e")));
-    } finally {
-      setState(() => _isSynthesizing = false);
-    }
-  }
-
-  Future<void> _playAudioBytes(List<int> data) async {
-    await _audioPlayer?.dispose();
-    _audioPlayer = Player();
-    final tempDir = Directory.systemTemp;
-    final tempFile = await File('${tempDir.path}/temp_audio_${DateTime.now().millisecondsSinceEpoch}.wav').create();
-    await tempFile.writeAsBytes(data);
-    await _audioPlayer!.open(Media(tempFile.path));
-    await _audioPlayer!.play();
-  }
-
-  Future<void> _playAudioUrl(String url) async {
-    await _audioPlayer?.dispose();
-    _audioPlayer = Player();
-    await _audioPlayer!.open(Media(url));
-    await _audioPlayer!.play();
+  void _gotoVoiceChat() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => VoiceCloneScreen(
+          profileId: widget.profileId,
+          username: widget.username,
+        ),
+      ),
+    );
   }
 
   @override
@@ -182,26 +122,14 @@ class _AiChatScreenState extends State<AiChatScreen> {
         ),
         actions: [
           IconButton(
-            tooltip: "Voice Chat",
-            icon: Icon(Icons.mic, color: _voiceId != null ? Colors.purple : Colors.white70),
-            onPressed: _isCloning ? null : _pickAndCloneVoice,
+            tooltip: "Try Voice-to-Voice AI (PersoAI)",
+            icon: const Icon(Icons.record_voice_over, color: Colors.lightGreenAccent),
+            onPressed: _gotoVoiceChat,
           ),
         ],
       ),
       body: Column(
         children: [
-          if (_isCloning)
-            const LinearProgressIndicator(
-              color: Colors.purple,
-              backgroundColor: Colors.black,
-              minHeight: 4,
-            ),
-          if (_isSynthesizing)
-            const LinearProgressIndicator(
-              color: Colors.cyanAccent,
-              backgroundColor: Colors.black,
-              minHeight: 4,
-            ),
           Expanded(
             child: ListView.builder(
               itemCount: messages.length,
@@ -218,7 +146,9 @@ class _AiChatScreenState extends State<AiChatScreen> {
                       maxWidth: MediaQuery.of(context).size.width * 0.75,
                     ),
                     decoration: BoxDecoration(
-                      color: isUser ? Colors.lightBlueAccent.shade100 : const Color(0xFF2D2F41),
+                      color: isUser
+                          ? Colors.lightBlueAccent.shade100
+                          : const Color(0xFF2D2F41),
                       borderRadius: BorderRadius.only(
                         topLeft: const Radius.circular(16),
                         topRight: const Radius.circular(16),
@@ -254,9 +184,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
                     },
                     style: const TextStyle(color: Colors.white),
                     decoration: InputDecoration(
-                      hintText: _voiceId != null
-                          ? 'Type or send to hear AI in your voice...'
-                          : 'Ask something...',
+                      hintText: 'Ask something...',
                       hintStyle: const TextStyle(color: Colors.white54),
                       filled: true,
                       fillColor: const Color(0xFF1E1E1E),
@@ -279,18 +207,6 @@ class _AiChatScreenState extends State<AiChatScreen> {
                   },
                 ),
                 const SizedBox(width: 5),
-                IconButton(
-                  icon: const Icon(Icons.record_voice_over, color: Colors.greenAccent),
-                  tooltip: "Voice Assistant",
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const VoiceAssistantScreen(),
-                      ),
-                    );
-                  },
-                ),
               ],
             ),
           )

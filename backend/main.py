@@ -6,11 +6,14 @@ import io
 import uuid
 import datetime
 import threading
+from pydantic import BaseModel
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional
 from dotenv import load_dotenv
+from azure_voice_assistant import fetch_memories, get_response_from_openai, speak_text
+
 import requests
 import uvicorn
 
@@ -62,6 +65,10 @@ from utils.profile_utils import (
     list_all_profiles,
     delete_profile_and_data,
 )
+class ProfileCreate(BaseModel):
+    name: str
+    relation: str
+
 
 # Register routers
 app.include_router(chat_ai_router, prefix="/ai", tags=["AI Chat"])
@@ -161,16 +168,13 @@ async def get_memories(profile_id: str):
 
 # Create profile endpoint
 @app.post("/create-profile/")
-async def create_profile_endpoint(
-    name: str = Form(...),
-    relation: str = Form(...),
-):
-    profile_id = f"{name.lower().strip()}_{relation.lower().strip()}".replace(" ", "_")
-
+async def create_profile_endpoint(profile: ProfileCreate):
+    profile_id = f"{profile.name.lower().strip()}_{profile.relation.lower().strip()}".replace(" ", "_")
+    
     if profile_exists(profile_id):
-        raise HTTPException(status_code=400, detail=f"Profile '{name} ({relation})' already exists ⚠️")
-
-    result = create_profile_in_storage(profile_id, name.strip(), relation.strip())
+        raise HTTPException(status_code=400, detail=f"Profile '{profile.name} ({profile.relation})' already exists ⚠️")
+    
+    result = create_profile_in_storage(profile_id, profile.name.strip(), profile.relation.strip())
     return {**result, "profile_id": profile_id}
 
 # Get all profiles endpoint
@@ -234,3 +238,14 @@ if __name__ == "__main__":
 
     # Run FastAPI server - blocks here
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+
+@app.post("/talk")
+async def talk_to_ai(user_id: str = Form(...)):
+    response = run_voice_assistant(user_id)
+    return {"message": response}
+
+@app.post("/upload-voice")
+async def upload_voice(user_id: str = Form(...), file: UploadFile = File(...)):
+    # Save file to Azure Blob
+    save_audio_to_blob(user_id, file)
+    return {"status": "Voice sample uploaded successfully"}

@@ -5,6 +5,7 @@
 list(APPEND FLUTTER_PLUGIN_LIST
   media_kit_video
   open_file_linux
+  record_linux
   syncfusion_pdfviewer_linux
   url_launcher_linux
   volume_controller

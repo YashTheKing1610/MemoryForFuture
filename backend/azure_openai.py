@@ -101,7 +101,7 @@ async def search_memories(req: MemorySearchRequest):
 def get_ai_response(prompt: str) -> str:
     try:
         response = client.chat.completions.create(
-            model=AZURE_DEPLOYMENT_NAME,
+            model=deployment_name,  # ✅ Fix: use the already-loaded variable
             messages=[
                 {"role": "system", "content": "You are a helpful assistant."},
                 {"role": "user", "content": prompt}
