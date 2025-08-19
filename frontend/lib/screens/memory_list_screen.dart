@@ -1,27 +1,58 @@
+//E:\MemoryForFuture\frontend\lib\screens\memory_list_screen.dart
+
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-
 import 'upload_memory_screen.dart';
 import 'ai_chat_screen.dart';
 import 'media_viewer_screen.dart';
 import 'package:memory_for_future/models/memory.dart';
+import 'image_to_3d_page.dart';
 
 const String baseUrl = "http://127.0.0.1:8000";
+
+// Robust filter helpers
+bool isImage(String fileType) {
+  final t = fileType.toLowerCase();
+  return t.contains('image') ||
+      ['jpg','jpeg','png','gif','bmp','webp','heic'].any(t.contains);
+}
+bool isVideo(String fileType) {
+  final t = fileType.toLowerCase();
+  return t.contains('video') ||
+      ['mp4','mov','mkv','avi','webm','m4v','mpeg'].any(t.contains);
+}
+bool isAudio(String fileType) {
+  final t = fileType.toLowerCase();
+  return t.contains('audio') ||
+      ['mp3','wav','aac','m4a','ogg','oga','flac','opus','m4b'].any(t.contains);
+}
+bool isDocument(String fileType) {
+  final t = fileType.toLowerCase();
+  return t.contains('pdf') ||
+      t.contains('doc') ||
+      t.contains('docx') ||
+      t.contains('txt') ||
+      t.contains('text') ||
+      t.contains('plain') ||
+      t.contains('rtf') ||
+      t.contains('ppt') ||
+      t.contains('pptx') ||
+      t.contains('xls') ||
+      t.contains('xlsx') ||
+      t.contains('csv');
+}
 
 class MemoryListScreen extends StatefulWidget {
   final String profileId;
   final String username;
-
   const MemoryListScreen({
-    
     Key? key,
     required this.profileId,
     required this.username,
   }) : super(key: key);
-
   @override
   State<MemoryListScreen> createState() => _MemoryListScreenState();
 }
@@ -31,7 +62,6 @@ class _MemoryListScreenState extends State<MemoryListScreen>
   TabController? _tabController;
   List<Memory> memories = [];
   bool isLoading = true;
-
   final List<String> tabs = ['ALL', 'IMAGES', 'VIDEOS', 'AUDIOS', 'DOCUMENTS'];
 
   @override
@@ -82,17 +112,6 @@ class _MemoryListScreenState extends State<MemoryListScreen>
     }
   }
 
-  bool isImage(String fileType) => fileType.toLowerCase().contains('image');
-  bool isVideo(String fileType) => fileType.toLowerCase().contains('video');
-  bool isAudio(String fileType) => fileType.toLowerCase().contains('audio');
-  bool isDocument(String fileType) {
-    final type = fileType.toLowerCase();
-    return type.contains('pdf') ||
-        type.contains('doc') ||
-        type.contains('text') ||
-        type.contains('plain');
-  }
-
   List<Memory> filterByType(String type) {
     switch (type) {
       case 'images':
@@ -110,10 +129,16 @@ class _MemoryListScreenState extends State<MemoryListScreen>
   }
 
   void openMemory(Memory memory) {
+    final currentType = tabs[_tabController?.index ?? 0].toLowerCase();
+    final currentList = filterByType(currentType);
+    final currentIndex = currentList.indexOf(memory);
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => MediaViewerScreen(memory: memory),
+        builder: (context) => MediaViewerScreen(
+          memories: currentList,
+          initialIndex: currentIndex,
+        ),
       ),
     );
   }
@@ -139,7 +164,6 @@ class _MemoryListScreenState extends State<MemoryListScreen>
       itemBuilder: (context, index) {
         final memory = memoryList[index];
         final String fileType = memory.fileType.toLowerCase();
-
         IconData iconData = Icons.insert_drive_file;
         Color glow = Colors.cyanAccent;
         if (isVideo(fileType)) {
@@ -153,7 +177,6 @@ class _MemoryListScreenState extends State<MemoryListScreen>
         } else if (isDocument(fileType)) {
           glow = Colors.amberAccent;
         }
-
         return GestureDetector(
           onTap: () => openMemory(memory),
           child: Container(
@@ -220,7 +243,8 @@ class _MemoryListScreenState extends State<MemoryListScreen>
                     child: BackdropFilter(
                       filter: ImageFilter.blur(sigmaX: 11, sigmaY: 11),
                       child: Container(
-                        color: Colors.black.withOpacity(isImage(fileType) ? 0.23 : 0.27),
+                        color: Colors.black.withOpacity(
+                            isImage(fileType) ? 0.23 : 0.27),
                       ),
                     ),
                   ),
@@ -230,7 +254,8 @@ class _MemoryListScreenState extends State<MemoryListScreen>
                             alignment: Alignment.bottomCenter,
                             child: Container(
                               margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
-                              padding: const EdgeInsets.symmetric(vertical: 5, horizontal: 16),
+                              padding: const EdgeInsets.symmetric(
+                                  vertical: 5, horizontal: 16),
                               decoration: BoxDecoration(
                                 color: Colors.black.withOpacity(0.6),
                                 borderRadius: BorderRadius.circular(15),
@@ -281,11 +306,13 @@ class _MemoryListScreenState extends State<MemoryListScreen>
                               ),
                               const SizedBox(height: 14),
                               Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 14, vertical: 6),
                                 decoration: BoxDecoration(
                                   color: Colors.black.withOpacity(0.56),
                                   borderRadius: BorderRadius.circular(15),
-                                  border: Border.all(color: glow.withOpacity(0.3), width: 1),
+                                  border: Border.all(
+                                      color: glow.withOpacity(0.3), width: 1),
                                 ),
                                 child: Text(
                                   memory.title,
@@ -312,12 +339,10 @@ class _MemoryListScreenState extends State<MemoryListScreen>
   @override
   Widget build(BuildContext context) {
     if (_tabController == null) {
-      // This case is unlikely now but safe fallback
       return const Scaffold(
         body: Center(child: CircularProgressIndicator()),
       );
     }
-
     return Scaffold(
       backgroundColor: const Color(0xFF0c111c),
       appBar: AppBar(
@@ -347,7 +372,9 @@ class _MemoryListScreenState extends State<MemoryListScreen>
               ),
               child: Center(
                 child: Text(
-                  widget.username.isNotEmpty ? widget.username[0].toUpperCase() : '',
+                  widget.username.isNotEmpty
+                      ? widget.username[0].toUpperCase()
+                      : '',
                   style: GoogleFonts.russoOne(
                     color: Colors.white,
                     fontSize: 22,
@@ -378,6 +405,17 @@ class _MemoryListScreenState extends State<MemoryListScreen>
             onPressed: () {
               Navigator.push(
                 context,
+                MaterialPageRoute(builder: (_) => ImageTo3DPage()),
+              );
+            },
+            icon: const Icon(Icons.threed_rotation_outlined,
+                color: Colors.cyanAccent, size: 28),
+            tooltip: 'Image to 3D',
+          ),
+          IconButton(
+            onPressed: () {
+              Navigator.push(
+                context,
                 MaterialPageRoute(
                   builder: (_) => UploadMemoryScreen(
                     profileId: widget.profileId,
@@ -386,7 +424,8 @@ class _MemoryListScreenState extends State<MemoryListScreen>
                 ),
               ).then((_) => fetchMemories());
             },
-            icon: const Icon(Icons.add_circle_outline_rounded, color: Colors.cyanAccent, size: 28),
+            icon: const Icon(Icons.add_circle_outline_rounded,
+                color: Colors.cyanAccent, size: 28),
             tooltip: 'Add Memory',
           ),
           IconButton(
@@ -401,7 +440,8 @@ class _MemoryListScreenState extends State<MemoryListScreen>
                 ),
               );
             },
-            icon: const Icon(Icons.chat_bubble_outline_rounded, color: Colors.purpleAccent, size: 27),
+            icon: const Icon(Icons.chat_bubble_outline_rounded,
+                color: Colors.purpleAccent, size: 27),
             tooltip: 'Chat with AI',
           ),
           const SizedBox(width: 12),
@@ -413,7 +453,8 @@ class _MemoryListScreenState extends State<MemoryListScreen>
             child: TabBar(
               controller: _tabController!,
               indicator: ShapeDecoration(
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10)),
                 gradient: const LinearGradient(
                   colors: [Colors.cyanAccent, Colors.purpleAccent],
                   begin: Alignment.topLeft,
@@ -435,10 +476,14 @@ class _MemoryListScreenState extends State<MemoryListScreen>
         ),
       ),
       body: isLoading
-          ? const Center(child: CircularProgressIndicator(color: Colors.cyanAccent))
+          ? const Center(
+              child: CircularProgressIndicator(color: Colors.cyanAccent))
           : TabBarView(
               controller: _tabController!,
-              children: tabs.map((tab) => buildMemoryGrid(filterByType(tab.toLowerCase()))).toList(),
+              children: tabs
+                  .map((tab) =>
+                      buildMemoryGrid(filterByType(tab.toLowerCase())))
+                  .toList(),
             ),
       floatingActionButton: Padding(
         padding: const EdgeInsets.only(bottom: 24),

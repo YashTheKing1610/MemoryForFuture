@@ -7,12 +7,11 @@ import uuid
 import datetime
 import threading
 from pydantic import BaseModel
-
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional
 from dotenv import load_dotenv
-from azure_voice_assistant import fetch_memories, get_response_from_openai, speak_text
+from azure_voice_assistant_api import fetch_memories, get_response_from_openai, speak_text
 
 import requests
 import uvicorn
@@ -51,8 +50,11 @@ app.add_middleware(
 # Import your routers (make sure the router variables are correctly exposed)
 from routes.chat_with_ai import router as chat_ai_router
 from azure_voice import router as voice_router
-# If you create an assistant router (FastAPI route), uncomment below and ensure it's defined
-# from azure_voice_assistant import router as assistant_router
+from routes.meshy import router as meshy_router
+from routes.flux_aging import router as flux_router
+from voice_assistant_api import router as voice_assistant_router
+from routes.age_transform import router as age_transform_router
+
 
 # Import utilities
 from azure_utils import upload_file_to_blob
@@ -64,16 +66,28 @@ from utils.profile_utils import (
     profile_exists,
     list_all_profiles,
     delete_profile_and_data,
+    save_user_fact,
 )
+
+# Updated ProfileCreate model to accept user info fields
 class ProfileCreate(BaseModel):
     name: str
     relation: str
+    bio: Optional[str] = ""
+    birthday: Optional[str] = None
+    gender: Optional[str] = None
+    favorite_color: Optional[str] = None
+    hobby: Optional[str] = None
+    # Add more fields if you want to collect more user facts
 
 
 # Register routers
 app.include_router(chat_ai_router, prefix="/ai", tags=["AI Chat"])
 app.include_router(voice_router, prefix="/voice", tags=["Voice Clone"])
-# app.include_router(assistant_router, prefix="/assistant", tags=["Voice Assistant"])  # Uncomment if applicable
+app.include_router(meshy_router, prefix="/meshy", tags=["Meshy AI"])
+app.include_router(flux_router, prefix="/flux", tags=["Flux AI Aging"])
+app.include_router(voice_assistant_router, prefix="/voice",tags=["Voice to Voice Chat"])
+app.include_router(age_transform_router, tags=["GPT Image Aging"])
 
 # Root endpoint
 @app.get("/")
@@ -166,15 +180,33 @@ async def get_memories(profile_id: str):
         logger.error(f"Failed to fetch memories for profile {profile_id}: {str(e)}")
         return {"message": "Failed to fetch memories ❌", "error": str(e)}
 
-# Create profile endpoint
+# Create profile endpoint (updated to save user facts)
 @app.post("/create-profile/")
 async def create_profile_endpoint(profile: ProfileCreate):
     profile_id = f"{profile.name.lower().strip()}_{profile.relation.lower().strip()}".replace(" ", "_")
-    
+
     if profile_exists(profile_id):
         raise HTTPException(status_code=400, detail=f"Profile '{profile.name} ({profile.relation})' already exists ⚠️")
-    
-    result = create_profile_in_storage(profile_id, profile.name.strip(), profile.relation.strip())
+
+    # Create profile with persona and user facts
+    result = create_profile_in_storage(
+        profile_id,
+        profile.name.strip(),
+        profile.relation.strip(),
+        personality="Kind and helpful",
+        style="Casual and friendly",
+        signature_phrases="",
+        user_birthday=profile.birthday or "",
+        user_favorite_color=profile.favorite_color or "",
+        user_hobby=profile.hobby or "",
+    )
+
+    # Save additional user facts like bio and gender
+    if profile.bio:
+        save_user_fact(profile_id, "bio", profile.bio)
+    if profile.gender:
+        save_user_fact(profile_id, "gender", profile.gender)
+
     return {**result, "profile_id": profile_id}
 
 # Get all profiles endpoint
@@ -226,26 +258,15 @@ async def tts_with_clone(
         logger.error(f"TTS with clone failed: {str(e)}")
         return {"error": str(e)}
 
-
 # Voice assistant loop starter
 def run_voice_assistant():
     start_voice_loop("yash_1610")  # Pass current profile id dynamically if needed
-
-
-if __name__ == "__main__":
-    # Start voice assistant loop in background thread
-    threading.Thread(target=run_voice_assistant, daemon=True).start()
-
-    # Run FastAPI server - blocks here
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
 
 @app.post("/talk")
 async def talk_to_ai(user_id: str = Form(...)):
     response = run_voice_assistant(user_id)
     return {"message": response}
 
-@app.post("/upload-voice")
-async def upload_voice(user_id: str = Form(...), file: UploadFile = File(...)):
-    # Save file to Azure Blob
-    save_audio_to_blob(user_id, file)
-    return {"status": "Voice sample uploaded successfully"}
+if __name__ == "__main__":
+    threading.Thread(target=run_voice_assistant, daemon=True).start()
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

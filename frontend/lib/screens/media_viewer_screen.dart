@@ -1,18 +1,15 @@
+// E:\MemoryForFuture\frontend\lib\screens\media_viewer_screen.dart
 import 'dart:convert';
-import 'dart:io';
-
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // for arrow key detection
 import 'package:media_kit/media_kit.dart';
-import 'package:media_kit/media_kit.dart';
-import 'package:media_kit_video/media_kit_video.dart';  // ✅ Only this needed for video
-
+import 'package:media_kit_video/media_kit_video.dart';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 import 'package:open_file/open_file.dart';
 import 'package:http/http.dart' as http;
+import '../models/memory.dart';
 
-import '../models/memory.dart'; // ✅ Keep as is
-
-// Helper to fetch text content from a URL (for .txt files)
+/// Fetch text content for .txt files
 Future<String> fetchTextFile(String url) async {
   final response = await http.get(Uri.parse(url));
   if (response.statusCode == 200) {
@@ -21,27 +18,111 @@ Future<String> fetchTextFile(String url) async {
   throw Exception('Failed to load text file');
 }
 
-class MediaViewerScreen extends StatelessWidget {
-  final Memory memory;
+/// Helper: Robust file type detection (EXTENDED: audio)
+bool isImage(String fileType) {
+  final t = fileType.toLowerCase();
+  return t.contains('image') ||
+      ['jpg','jpeg','png','gif','bmp','webp','heic'].any(t.contains);
+}
+bool isVideo(String fileType) {
+  final t = fileType.toLowerCase();
+  return t.contains('video') ||
+      ['mp4','mov','mkv','avi','webm','m4v','mpeg'].any(t.contains);
+}
+bool isAudio(String fileType) {
+  final t = fileType.toLowerCase();
+  return t.contains('audio') ||
+      ['mp3','wav','aac','m4a','ogg','oga','flac','opus','m4b'].any(t.contains);
+}
+bool isPdf(String fileType) {
+  final t = fileType.toLowerCase();
+  return t.contains('pdf');
+}
+bool isText(String fileType) {
+  final t = fileType.toLowerCase();
+  return t.contains('txt') ||
+      t.contains('text') ||
+      t.contains('plain');
+}
+bool isDocument(String fileType) {
+  final t = fileType.toLowerCase();
+  return isPdf(t) ||
+      t.contains('doc') ||
+      t.contains('docx') ||
+      isText(t) ||
+      t.contains('rtf') ||
+      t.contains('ppt') ||
+      t.contains('pptx') ||
+      t.contains('xls') ||
+      t.contains('xlsx') ||
+      t.contains('csv');
+}
 
-  const MediaViewerScreen({Key? key, required this.memory}) : super(key: key);
+class MediaViewerScreen extends StatefulWidget {
+  final List<Memory> memories;
+  final int initialIndex;
+  const MediaViewerScreen({
+    Key? key,
+    required this.memories,
+    required this.initialIndex,
+  }) : super(key: key);
+  @override
+  State<MediaViewerScreen> createState() => _MediaViewerScreenState();
+}
 
-  bool isDocument(String fileType) {
-    final type = fileType.toLowerCase();
-    return type.contains('pdf') ||
-        type.contains('doc') ||
-        type.contains('docx') ||
-        type.contains('txt') ||
-        type.contains('text') ||
-        type.contains('rtf') ||
-        type.contains('plain');
+class _MediaViewerScreenState extends State<MediaViewerScreen> {
+  late int currentIndex;
+  late FocusNode _focusNode;
+  @override
+  void initState() {
+    super.initState();
+    currentIndex = widget.initialIndex;
+    _focusNode = FocusNode();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _focusNode.requestFocus();
+    });
+  }
+
+  @override
+  void dispose() {
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  void _showNext() {
+    setState(() {
+      currentIndex = (currentIndex + 1) % widget.memories.length;
+    });
+  }
+
+  void _showPrevious() {
+    setState(() {
+      currentIndex = (currentIndex - 1 + widget.memories.length) % widget.memories.length;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
+    final memory = widget.memories[currentIndex];
     final fileType = memory.fileType.toLowerCase();
+    return RawKeyboardListener(
+      focusNode: _focusNode,
+      autofocus: true,
+      onKey: (RawKeyEvent event) {
+        if (event is RawKeyDownEvent) {
+          if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+            _showNext();
+          } else if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+            _showPrevious();
+          }
+        }
+      },
+      child: _buildMedia(context, memory, fileType),
+    );
+  }
 
-    if (fileType.contains('image')) {
+  Widget _buildMedia(BuildContext context, Memory memory, String fileType) {
+    if (isImage(fileType)) {
       return Scaffold(
         backgroundColor: Colors.black,
         appBar: AppBar(title: Text(memory.title)),
@@ -49,32 +130,25 @@ class MediaViewerScreen extends StatelessWidget {
           child: Image.network(
             memory.contentUrl,
             fit: BoxFit.contain,
-            errorBuilder: (context, error, stackTrace) => const Center(child: Icon(Icons.broken_image)),
+            errorBuilder: (context, error, stackTrace) =>
+                const Center(child: Icon(Icons.broken_image)),
           ),
         ),
       );
     }
-
-    if (fileType.contains('video')) {
+    if (isVideo(fileType)) {
       return VideoPlayerScreen(url: memory.contentUrl, title: memory.title);
     }
-
-    if (fileType.contains('audio') ||
-        fileType.contains('mpeg') ||
-        fileType.contains('mp3') ||
-        fileType.contains('wav') ||
-        fileType.contains('aac')) {
+    if (isAudio(fileType)) {
       return AudioPlayerScreen(url: memory.contentUrl, title: memory.title);
     }
-
-    if (fileType.contains('pdf')) {
+    if (isPdf(fileType)) {
       return Scaffold(
         appBar: AppBar(title: Text(memory.title)),
         body: SfPdfViewer.network(memory.contentUrl),
       );
     }
-
-    if (fileType.contains('txt') || fileType.contains('text') || fileType.contains('plain')) {
+    if (isText(fileType)) {
       return Scaffold(
         appBar: AppBar(title: Text(memory.title)),
         body: FutureBuilder<String>(
@@ -94,7 +168,6 @@ class MediaViewerScreen extends StatelessWidget {
         ),
       );
     }
-
     if (isDocument(fileType)) {
       return Scaffold(
         appBar: AppBar(title: Text(memory.title)),
@@ -114,8 +187,7 @@ class MediaViewerScreen extends StatelessWidget {
         ),
       );
     }
-
-    // Unsupported file type
+    // Unsupported type
     return Scaffold(
       appBar: AppBar(title: const Text('Unsupported')),
       body: const Center(child: Text('Unsupported file type')),
@@ -126,9 +198,8 @@ class MediaViewerScreen extends StatelessWidget {
 class VideoPlayerScreen extends StatefulWidget {
   final String url;
   final String title;
-
-  const VideoPlayerScreen({Key? key, required this.url, required this.title}) : super(key: key);
-
+  const VideoPlayerScreen({Key? key, required this.url, required this.title})
+      : super(key: key);
   @override
   State<VideoPlayerScreen> createState() => _VideoPlayerScreenState();
 }
@@ -137,19 +208,15 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   late final Player _player;
   late final VideoController _controller;
   bool _isPlaying = false;
-
   @override
   void initState() {
     super.initState();
-    MediaKit.ensureInitialized(); // Important to prevent initialization error
-
+    MediaKit.ensureInitialized();
     _player = Player();
     _controller = VideoController(_player);
     _player.open(Media(widget.url));
     _player.stream.playing.listen((playing) {
-      setState(() {
-        _isPlaying = playing;
-      });
+      setState(() => _isPlaying = playing);
     });
   }
 
@@ -187,9 +254,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 class AudioPlayerScreen extends StatefulWidget {
   final String url;
   final String title;
-
-  const AudioPlayerScreen({Key? key, required this.url, required this.title}) : super(key: key);
-
+  const AudioPlayerScreen({Key? key, required this.url, required this.title})
+      : super(key: key);
   @override
   State<AudioPlayerScreen> createState() => _AudioPlayerScreenState();
 }
@@ -197,18 +263,14 @@ class AudioPlayerScreen extends StatefulWidget {
 class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
   late final Player _player;
   bool _isPlaying = false;
-
   @override
   void initState() {
     super.initState();
-    MediaKit.ensureInitialized();  // Important for initialization
-
+    MediaKit.ensureInitialized();
     _player = Player();
     _player.open(Media(widget.url));
     _player.stream.playing.listen((playing) {
-      setState(() {
-        _isPlaying = playing;
-      });
+      setState(() => _isPlaying = playing);
     });
   }
 

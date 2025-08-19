@@ -1,36 +1,8 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'package:memory_for_future/screens/voice_clone_screen.dart';
-
-class PersoVoiceChatScreen extends StatelessWidget {
-  final String profileId;
-  final String username;
-
-  const PersoVoiceChatScreen({
-    Key? key,
-    required this.profileId,
-    required this.username,
-  }) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text("Voice-to-Voice with ${username}'s AI"),
-        backgroundColor: Colors.black87,
-      ),
-      body: Center(
-        child: Text(
-          "Coming soon: Voice-to-voice chat using Azure Speech Services & PersoAI!",
-          style: TextStyle(fontSize: 16, color: Colors.white70),
-          textAlign: TextAlign.center,
-        ),
-      ),
-      backgroundColor: const Color(0xFF121212),
-    );
-  }
-}
+// Import the voice assistant screen (adjust path as per your structure)
+import 'package:memory_for_future/screens/voice_assistant_screen.dart';
 
 class AiChatScreen extends StatefulWidget {
   final String profileId;
@@ -48,12 +20,14 @@ class AiChatScreen extends StatefulWidget {
 
 class _AiChatScreenState extends State<AiChatScreen> {
   final TextEditingController _controller = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
   List<Map<String, String>> messages = [];
   final String apiBase = "http://127.0.0.1:8000";
 
   @override
   void dispose() {
     _controller.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -61,6 +35,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
     setState(() {
       messages.add({"sender": "user", "text": message});
     });
+    _scrollToBottom();
 
     try {
       final url = Uri.parse("$apiBase/ai/ask");
@@ -80,26 +55,38 @@ class _AiChatScreenState extends State<AiChatScreen> {
         setState(() {
           messages.add({"sender": "ai", "text": reply});
         });
+        _scrollToBottom();
       } else {
         setState(() {
           messages.add({"sender": "ai", "text": "⚠️ Error: ${response.statusCode}"});
         });
+        _scrollToBottom();
       }
     } catch (e) {
       setState(() {
         messages.add({"sender": "ai", "text": "⚠️ Exception: $e"});
       });
+      _scrollToBottom();
     }
+  }
+
+  void _scrollToBottom() {
+    Future.delayed(const Duration(milliseconds: 100), () {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
   }
 
   void _gotoVoiceChat() {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => VoiceCloneScreen(
-          profileId: widget.profileId,
-          username: widget.username,
-        ),
+        builder: (_) => VoiceAssistantScreen(), // Only takes context, not profileId/username
       ),
     );
   }
@@ -115,14 +102,14 @@ class _AiChatScreenState extends State<AiChatScreen> {
             const Icon(Icons.smart_toy, color: Colors.cyanAccent),
             const SizedBox(width: 8),
             Text(
-              "Chat with ${widget.username}'s AI 🤖",
+              "Chat with ${widget.username}",
               style: const TextStyle(color: Colors.white),
             ),
           ],
         ),
         actions: [
           IconButton(
-            tooltip: "Try Voice-to-Voice AI (PersoAI)",
+            tooltip: "Try Voice-to-Voice AI",
             icon: const Icon(Icons.record_voice_over, color: Colors.lightGreenAccent),
             onPressed: _gotoVoiceChat,
           ),
@@ -132,6 +119,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
         children: [
           Expanded(
             child: ListView.builder(
+              controller: _scrollController,
               itemCount: messages.length,
               padding: const EdgeInsets.all(12),
               itemBuilder: (context, index) {
@@ -206,10 +194,9 @@ class _AiChatScreenState extends State<AiChatScreen> {
                     }
                   },
                 ),
-                const SizedBox(width: 5),
               ],
             ),
-          )
+          ),
         ],
       ),
     );
