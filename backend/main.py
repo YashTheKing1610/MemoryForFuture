@@ -11,7 +11,10 @@ from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional
 from dotenv import load_dotenv
-from azure_voice_assistant_api import fetch_memories, get_response_from_openai, speak_text
+from azure_voice_assistant_api import fetch_memories, get_response_from_openai,speak_text
+from azure_voice_assistant_api import main as voice_assistant_main
+from typing import List
+
 
 import requests
 import uvicorn
@@ -21,8 +24,11 @@ project_root = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(project_root)  # backend folder
 sys.path.append(os.path.abspath(os.path.join(project_root, "..")))  # MemoryForFuture root
 
-# Import voice assistant CLI loop (ensure this script runs independently from FastAPI)
 from assistant_loop import start_voice_loop
+# Import process manager for assistant start/stop
+from assistant_manager import start_assistant, stop_assistant
+from routes import vr
+
 
 # Load environment variables
 load_dotenv()
@@ -47,14 +53,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Import your routers (make sure the router variables are correctly exposed)
+# Import your routers
 from routes.chat_with_ai import router as chat_ai_router
 from azure_voice import router as voice_router
 from routes.meshy import router as meshy_router
 from routes.flux_aging import router as flux_router
 from voice_assistant_api import router as voice_assistant_router
 from routes.age_transform import router as age_transform_router
-
 
 # Import utilities
 from azure_utils import upload_file_to_blob
@@ -69,7 +74,13 @@ from utils.profile_utils import (
     save_user_fact,
 )
 
-# Updated ProfileCreate model to accept user info fields
+
+class VRRequest(BaseModel):
+    profile_id: str
+    memory_ids: List[str]
+
+
+# Updated ProfileCreate model
 class ProfileCreate(BaseModel):
     name: str
     relation: str
@@ -78,21 +89,20 @@ class ProfileCreate(BaseModel):
     gender: Optional[str] = None
     favorite_color: Optional[str] = None
     hobby: Optional[str] = None
-    # Add more fields if you want to collect more user facts
-
 
 # Register routers
 app.include_router(chat_ai_router, prefix="/ai", tags=["AI Chat"])
 app.include_router(voice_router, prefix="/voice", tags=["Voice Clone"])
 app.include_router(meshy_router, prefix="/meshy", tags=["Meshy AI"])
 app.include_router(flux_router, prefix="/flux", tags=["Flux AI Aging"])
-app.include_router(voice_assistant_router, prefix="/voice",tags=["Voice to Voice Chat"])
+app.include_router(voice_assistant_router, prefix="/voice", tags=["Voice to Voice Chat"])
 app.include_router(age_transform_router, tags=["GPT Image Aging"])
+app.include_router(vr.router, prefix="/vr", tags=["VR"])  # Add this line
 
 # Root endpoint
 @app.get("/")
 async def root():
-    return {"message": "MemoryForFuture API is running ✅"}
+    return {"message": "MemoryForFuture Backend with Voice Assistant running ✅"}
 
 # Test Azure Blob storage access
 @app.get("/test-storage-access")
@@ -180,7 +190,7 @@ async def get_memories(profile_id: str):
         logger.error(f"Failed to fetch memories for profile {profile_id}: {str(e)}")
         return {"message": "Failed to fetch memories ❌", "error": str(e)}
 
-# Create profile endpoint (updated to save user facts)
+# Create profile endpoint
 @app.post("/create-profile/")
 async def create_profile_endpoint(profile: ProfileCreate):
     profile_id = f"{profile.name.lower().strip()}_{profile.relation.lower().strip()}".replace(" ", "_")
@@ -188,7 +198,6 @@ async def create_profile_endpoint(profile: ProfileCreate):
     if profile_exists(profile_id):
         raise HTTPException(status_code=400, detail=f"Profile '{profile.name} ({profile.relation})' already exists ⚠️")
 
-    # Create profile with persona and user facts
     result = create_profile_in_storage(
         profile_id,
         profile.name.strip(),
@@ -201,7 +210,6 @@ async def create_profile_endpoint(profile: ProfileCreate):
         user_hobby=profile.hobby or "",
     )
 
-    # Save additional user facts like bio and gender
     if profile.bio:
         save_user_fact(profile_id, "bio", profile.bio)
     if profile.gender:
@@ -219,7 +227,6 @@ async def get_profiles():
 async def delete_profile(profile_id: str):
     if not profile_exists(profile_id):
         raise HTTPException(status_code=404, detail="Profile not found")
-
     return delete_profile_and_data(profile_id)
 
 # Voice clone endpoint
@@ -259,14 +266,27 @@ async def tts_with_clone(
         return {"error": str(e)}
 
 # Voice assistant loop starter
-def run_voice_assistant():
-    start_voice_loop("yash_1610")  # Pass current profile id dynamically if needed
+def run_voice_assistant(user_id: str):
+    start_voice_loop(user_id)
 
 @app.post("/talk")
 async def talk_to_ai(user_id: str = Form(...)):
-    response = run_voice_assistant(user_id)
-    return {"message": response}
+    run_voice_assistant(user_id)
+    return {"message": f"Voice assistant started for {user_id}"}
+
+# *** Start/Stop assistant endpoints updated below ***
+
+@app.post("/start-assistant")
+async def start_assistant_endpoint():
+    """Start azure_voice_assistant_api.py as subprocess."""
+    result = start_assistant()
+    return result
+
+@app.post("/stop-assistant")
+async def stop_assistant_endpoint():
+    """Stop running assistant subprocess."""
+    result = stop_assistant()
+    return result
 
 if __name__ == "__main__":
-    threading.Thread(target=run_voice_assistant, daemon=True).start()
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

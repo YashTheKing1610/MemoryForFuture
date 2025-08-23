@@ -8,7 +8,7 @@ void main() {
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
-  
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -18,7 +18,7 @@ class MyApp extends StatelessWidget {
         scaffoldBackgroundColor: Colors.black,
         primaryColor: Colors.cyanAccent,
       ),
-      home: const HomeScreen(), // Your app’s entry widget
+      home: const HomeScreen(), // This should match your file and class name
     );
   }
 }

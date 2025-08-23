@@ -1,10 +1,11 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:google_fonts/google_fonts.dart';
 import 'upload_memory_screen.dart';
 import 'memory_list_screen.dart';
-import 'create_profile_screen.dart'; // Import your new stepper screen
+import 'create_profile_screen.dart';
 
 class Profile {
   final String id;
@@ -24,14 +25,12 @@ class Profile {
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
-
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
 class _HomeScreenState extends State<HomeScreen> {
   List<Profile> profiles = [];
-
   final String baseUrl = 'http://127.0.0.1:8000';
 
   @override
@@ -49,9 +48,7 @@ class _HomeScreenState extends State<HomeScreen> {
           profiles = data.map((p) => Profile.fromJson(p)).toList();
         });
       }
-    } catch (e) {
-      // Handle fetch error (optional)
-    }
+    } catch (e) {}
   }
 
   Future<void> deleteProfile(String profileId) async {
@@ -60,7 +57,7 @@ class _HomeScreenState extends State<HomeScreen> {
       if (res.statusCode == 200) {
         fetchProfiles();
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Profile deleted permanently ✅")),
+          const SnackBar(content: Text("Profile deleted permanently ✅")),
         );
       } else {
         final error = json.decode(res.body)['detail'] ?? "Unknown error";
@@ -70,7 +67,7 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Network error"), backgroundColor: Colors.red),
+        const SnackBar(content: Text("Network error"), backgroundColor: Colors.red),
       );
     }
   }
@@ -95,6 +92,7 @@ class _HomeScreenState extends State<HomeScreen> {
               deleteProfile(profile.id);
               Navigator.pop(context);
             },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
             child: const Text("Delete"),
           ),
         ],
@@ -102,202 +100,390 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFF121212),
-      appBar: AppBar(
-        backgroundColor: Colors.black,
-        title: Row(
-          children: [
-            const Icon(Icons.memory, color: Colors.pinkAccent),
-            const SizedBox(width: 8),
-            Text("MemoryForFuture",
-                style: GoogleFonts.montserrat(
-                    fontSize: 20, fontWeight: FontWeight.bold, color: Colors.cyanAccent))
-          ],
-        ),
-      ),
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 600),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              const SizedBox(height: 30),
-              Text(
-                "Who are you remembering today?",
-                style: TextStyle(
-                  color: Colors.white.withOpacity(0.9),
-                  fontSize: 18,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              const SizedBox(height: 30),
-              Expanded(
-                child: GridView.builder(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  itemCount: profiles.length + 1,
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 2,
-                    crossAxisSpacing: 20,
-                    mainAxisSpacing: 30,
-                    childAspectRatio: 1,
-                  ),
-                  itemBuilder: (context, index) {
-                    if (index == profiles.length) {
-                      // Add Profile Button
-                      return InkWell(
-                        onTap: () async {
-                          // Route to stepper create profile screen
-                          final result = await Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => CreateProfileScreen(),
-                            ),
-                          );
-                          // If profile created, refresh list!
-                          if (result == true) fetchProfiles();
-                        },
-                        borderRadius: BorderRadius.circular(50),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Container(
-                              width: 100,
-                              height: 100,
-                              decoration: BoxDecoration(
-                                color: Colors.grey[900],
-                                borderRadius: BorderRadius.circular(50),
-                                border: Border.all(
-                                  color: Colors.grey[700]!,
-                                  width: 2,
-                                ),
-                              ),
-                              child: const Icon(
-                                Icons.add,
-                                size: 40,
-                                color: Colors.white70,
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            const Text(
-                              "Add Profile",
-                              style: TextStyle(
-                                color: Colors.white70,
-                                fontSize: 16,
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    }
+  int getCrossAxisCount(BuildContext context) {
+    double width = MediaQuery.of(context).size.width;
+    if (width > 950) return 3;
+    if (width > 650) return 2;
+    return 1;
+  }
 
-                    final profile = profiles[index];
-
-                    return GestureDetector(
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => MemoryListScreen(
-                              profileId: profile.id,
-                              username: profile.name,
-                            ),
-                          ),
-                        );
-                      },
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Stack(
-                            alignment: Alignment.center,
-                            children: [
-                              Container(
-                                width: 100,
-                                height: 100,
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(50),
-                                  gradient: LinearGradient(
-                                    colors: [
-                                      Colors.blueAccent.withOpacity(0.8),
-                                      Colors.purpleAccent.withOpacity(0.8),
-                                    ],
-                                    begin: Alignment.topLeft,
-                                    end: Alignment.bottomRight,
-                                  ),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black.withOpacity(0.3),
-                                      blurRadius: 8,
-                                      offset: const Offset(0, 4),
-                                    ),
-                                  ],
-                                ),
-                                child: Icon(
-                                  Icons.person,
-                                  size: 50,
-                                  color: Colors.white.withOpacity(0.9),
-                                ),
-                              ),
-                              Positioned(
-                                top: 0,
-                                right: 0,
-                                child: PopupMenuButton<String>(
-                                  onSelected: (value) {
-                                    if (value == 'delete') {
-                                      _showDeleteConfirmation(profile);
-                                    }
-                                  },
-                                  itemBuilder: (context) => [
-                                    const PopupMenuItem(
-                                      value: 'delete',
-                                      child: Text('Delete Profile'),
-                                    ),
-                                  ],
-                                  icon: Container(
-                                    width: 28,
-                                    height: 28,
-                                    decoration: BoxDecoration(
-                                      color: Colors.black.withOpacity(0.7),
-                                      shape: BoxShape.circle,
-                                    ),
-                                    child: Icon(
-                                      Icons.more_vert,
-                                      size: 18,
-                                      color: Colors.white.withOpacity(0.9),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          Text(
-                            profile.name,
-                            style: TextStyle(
-                              color: Colors.white.withOpacity(0.9),
-                              fontSize: 16,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            profile.relation,
-                            style: TextStyle(
-                              color: Colors.white.withOpacity(0.6),
-                              fontSize: 14,
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
+  Widget buildProfileCard(Profile profile) {
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => MemoryListScreen(
+              profileId: profile.id,
+              username: profile.name,
+            ),
+          ),
+        );
+      },
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 240),
+          margin: const EdgeInsets.all(8.0),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(36),
+            gradient: LinearGradient(
+              colors: [
+                const Color(0xFFF95997),          // memory_for_future pink
+                const Color(0xFFB195FC),
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFFF95997).withOpacity(.13),
+                blurRadius: 32,
+                spreadRadius: 5,
               ),
-              const SizedBox(height: 30),
             ],
           ),
+          child: InkWell(
+            splashColor: Colors.white.withOpacity(0.07),
+            borderRadius: BorderRadius.circular(36),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => MemoryListScreen(
+                    profileId: profile.id,
+                    username: profile.name,
+                  ),
+                ),
+              );
+            },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 6),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Stack(
+                    children: [
+                      Container(
+                        width: 74,
+                        height: 74,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(37),
+                          gradient: RadialGradient(
+                            colors: [
+                              Colors.white.withOpacity(.11),
+                              const Color(0xFFF95997).withOpacity(0.21),
+                              Colors.transparent,
+                            ],
+                            stops: const [0.35, 0.73, 1],
+                          ),
+                        ),
+                        child: const Icon(
+                          Icons.person,
+                          size: 44,
+                          color: Colors.white,
+                        ),
+                      ),
+                      Positioned(
+                        top: 2,
+                        right: 2,
+                        child: PopupMenuButton<String>(
+                          onSelected: (value) {
+                            if (value == 'delete') {
+                              _showDeleteConfirmation(profile);
+                            }
+                          },
+                          itemBuilder: (context) => [
+                            const PopupMenuItem(
+                              value: 'delete',
+                              child: Text('Delete Profile',
+                                  style: TextStyle(color: Colors.redAccent)),
+                            ),
+                          ],
+                          color: Colors.grey[900],
+                          icon: Container(
+                            decoration: BoxDecoration(
+                              color: Colors.black.withOpacity(0.44),
+                              shape: BoxShape.circle,
+                              boxShadow: [
+                                BoxShadow(
+                                    color: Colors.black.withOpacity(.13),
+                                    blurRadius: 2)
+                              ],
+                            ),
+                            child: const Icon(Icons.more_vert, color: Colors.white, size: 22),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+                  Text(
+                    profile.name,
+                    maxLines: 2,
+                    textAlign: TextAlign.center,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.montserrat(
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
+                      fontSize: 22,
+                      letterSpacing: 0.1,
+                    ),
+                  ),
+                  const SizedBox(height: 7),
+                  Text(
+                    profile.relation,
+                    maxLines: 1,
+                    textAlign: TextAlign.center,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.montserrat(
+                      fontWeight: FontWeight.w400,
+                      color: Colors.white.withOpacity(.89),
+                      fontSize: 16,
+                      letterSpacing: 0.1,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ),
+      ),
+    );
+  }
+
+  Widget buildAddProfileCard() {
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 240),
+        margin: const EdgeInsets.all(10.0),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(36),
+          gradient: const LinearGradient(
+            colors: [
+              Color(0xFF232137),
+              Color(0xFF35376C),
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.pinkAccent.withOpacity(.10),
+              blurRadius: 16,
+              spreadRadius: 3,
+            ),
+          ],
+          border: Border.all(
+            color: Colors.white12,
+            width: 2,
+          ),
+        ),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(36),
+          onTap: () async {
+            final result = await Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => CreateProfileScreen(),
+              ),
+            );
+            if (result == true) fetchProfiles();
+          },
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 34, horizontal: 10),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  width: 56,
+                  height: 56,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFFF95997), Color(0xFFB195FC)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                  ),
+                  child: const Icon(Icons.add, color: Colors.white, size: 34),
+                ),
+                const SizedBox(height: 22),
+                Text(
+                  "Add Profile",
+                  style: GoogleFonts.montserrat(
+                    fontSize: 19,
+                    color: Colors.white70,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 7),
+                Text(
+                  'Create a new memory',
+                  style: GoogleFonts.montserrat(
+                      color: Colors.white38, fontSize: 14),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    double width = MediaQuery.of(context).size.width;
+    int crossAxisCount = getCrossAxisCount(context);
+
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        elevation: 0,
+        titleSpacing: 0,
+        title: Row(
+          children: [
+            Container(
+              decoration: const BoxDecoration(
+                  color: Color(0xFFFD62B0), shape: BoxShape.circle),
+              padding: const EdgeInsets.all(8),
+              child: const Icon(Icons.favorite, color: Colors.white),
+            ),
+            const SizedBox(width: 12),
+            Text(
+              "MemoryForFuture",
+              style: GoogleFonts.montserrat(
+                fontSize: 26,
+                fontWeight: FontWeight.w900,
+                color: const Color(0xFFFD62B0),
+                letterSpacing: 1,
+              ),
+            ),
+          ],
+        ),
+        centerTitle: false,
+        toolbarHeight: 65,
+      ),
+      body: Stack(
+        children: [
+          Positioned(
+            top: -120,
+            left: -80,
+            child: Container(
+              width: 270,
+              height: 270,
+              decoration: BoxDecoration(
+                gradient: RadialGradient(
+                  colors: [
+                    const Color(0xFFF95997).withOpacity(0.21),
+                    Colors.transparent
+                  ],
+                  radius: 0.8,
+                ),
+                shape: BoxShape.circle,
+              ),
+            ),
+          ),
+          Positioned(
+            bottom: -100,
+            right: -80,
+            child: Container(
+              width: 330,
+              height: 190,
+              decoration: BoxDecoration(
+                gradient: RadialGradient(
+                  colors: [
+                    const Color(0xFF43264A).withOpacity(0.09),
+                    Colors.transparent
+                  ],
+                  radius: 0.9,
+                ),
+                shape: BoxShape.circle,
+              ),
+            ),
+          ),
+          Positioned(
+            top: 100,
+            right: -70,
+            child: Container(
+              width: 180,
+              height: 180,
+              decoration: BoxDecoration(
+                gradient: RadialGradient(
+                  colors: [
+                    const Color(0xFFB195FC).withOpacity(0.17),
+                    Colors.transparent
+                  ],
+                  radius: 0.9,
+                ),
+                shape: BoxShape.circle,
+              ),
+            ),
+          ),
+          Center(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                  maxWidth: width > 1250 ? 1100 : (width > 950 ? 900 : 650)),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.start,
+                children: [
+                  const SizedBox(height: 36),
+                  RichText(
+                    textAlign: TextAlign.center,
+                    text: TextSpan(
+                      style: GoogleFonts.montserrat(
+                        fontSize: 44,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                      children: [
+                        const TextSpan(text: 'Who are you '),
+                        TextSpan(
+                            text: 'remembering ',
+                            style: GoogleFonts.montserrat(
+                              color: Color(0xFFF95997), // main pink theme highlight
+                              fontWeight: FontWeight.w900,
+                            )),
+                        const TextSpan(text: 'today?'),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    "Preserve precious memories and honor the special people in your life.\nCreate lasting tributes that celebrate their impact on your journey.",
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.montserrat(
+                      color: Colors.white70,
+                      fontSize: 19,
+                      fontWeight: FontWeight.w400,
+                      height: 1.45,
+                    ),
+                  ),
+                  const SizedBox(height: 36),
+                  Expanded(
+                    child: GridView.builder(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      itemCount: profiles.length + 1,
+                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: crossAxisCount,
+                          crossAxisSpacing: 32,
+                          mainAxisSpacing: 36,
+                          childAspectRatio: 1.13),
+                      itemBuilder: (context, index) {
+                        if (index == profiles.length) {
+                          return buildAddProfileCard();
+                        }
+                        return buildProfileCard(profiles[index]);
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

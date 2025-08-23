@@ -1,3 +1,5 @@
+//E:\MemoryForFuture\frontend\lib\models\memory.dart
+
 class Memory {
   final String title;
   final String filePath;
