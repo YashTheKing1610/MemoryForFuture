@@ -13,6 +13,12 @@ class Memory {
     required this.contentUrl,
   });
 
+String get uniqueId {
+  final parts = filePath.split('/');
+  final fileName = parts.isNotEmpty ? parts.last : filePath;
+  return fileName.split('.').first;
+}
+
   factory Memory.fromJson(Map<String, dynamic> json) {
     return Memory(
       title: json['title'] ?? '',

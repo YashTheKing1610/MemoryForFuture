@@ -14,6 +14,11 @@ from dotenv import load_dotenv
 from azure_voice_assistant_api import fetch_memories, get_response_from_openai,speak_text
 from azure_voice_assistant_api import main as voice_assistant_main
 from typing import List
+from azure.storage.blob import BlobServiceClient
+from azure.storage.blob import generate_blob_sas, BlobSasPermissions, ContentSettings
+import datetime
+
+
 
 
 import requests
@@ -36,6 +41,11 @@ load_dotenv()
 # Initialize logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+AZURE_CONNECTION_STRING = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
+BLOB_CONTAINER = os.getenv("AZURE_CONTAINER_NAME")
+blob_service_client = BlobServiceClient.from_connection_string(AZURE_CONNECTION_STRING)
+container_client = blob_service_client.get_container_client(BLOB_CONTAINER)
+
 
 # API Keys and URLs
 API_KEY = os.getenv("FISH_AUDIO_API_KEY")
@@ -75,10 +85,9 @@ from utils.profile_utils import (
 )
 
 
-class VRRequest(BaseModel):
+class MemorySelection(BaseModel):
     profile_id: str
-    memory_ids: List[str]
-
+    selected_memory_ids: list[str]
 
 # Updated ProfileCreate model
 class ProfileCreate(BaseModel):
@@ -287,6 +296,97 @@ async def stop_assistant_endpoint():
     """Stop running assistant subprocess."""
     result = stop_assistant()
     return result
+
+def get_account_key():
+    for part in AZURE_CONNECTION_STRING.split(";"):
+        if part.lower().startswith("accountkey="):
+            return part.split("=", 1)[1]
+    raise RuntimeError("Could not find account key in connection string")
+
+account_name = blob_service_client.account_name
+account_key = get_account_key()
+
+def generate_sas_url(blob_name: str, expiry_hours: int = 105) -> str:
+    sas_token = generate_blob_sas(
+        account_name=account_name,
+        container_name=CONTAINER_NAME,
+        blob_name=blob_name,
+        account_key=account_key,
+        permission=BlobSasPermissions(read=True),
+        expiry=datetime.datetime.utcnow() + datetime.timedelta(hours=expiry_hours),
+    )
+    return f"https://{account_name}.blob.core.windows.net/{CONTAINER_NAME}/{blob_name}?{sas_token}"
+
+@app.post("/create-vr-room/")
+async def create_vr_room(selection: MemorySelection):
+    if not selection.profile_id or not selection.selected_memory_ids:
+        raise HTTPException(status_code=400, detail="profile_id and selected_memory_ids are required")
+
+    # Define possible memory types and folders/extensions as per your storage layout
+    possible_locations = {
+        "image": ("images", [".jpg", ".jpeg", ".png", ".webp"]),
+        "video": ("videos", [".mp4", ".mov", ".webm"]),
+        "audio": ("voice_samples", [".mp3", ".wav", ".m4a"]),
+        "text":  ("documents", [".txt", ".json", ".pdf"]),
+    }
+
+    memories = []
+
+    for mem_id in selection.selected_memory_ids:
+        found = False
+        for mem_type, (folder, exts) in possible_locations.items():
+            for ext in exts:
+                blob_name = f"profiles/{selection.profile_id}/{folder}/{mem_id}{ext}"
+                blob_client = container_client.get_blob_client(blob_name)
+                try:
+                    if blob_client.exists():
+                        url = generate_sas_url(blob_name)
+                        memories.append({
+                            "id": mem_id,
+                            "type": mem_type,
+                            "url": url,
+                            "title": f"{mem_id}{ext}",
+                            # You can add 3D transform defaults or leave None
+                            "position": None,
+                            "rotation": None,
+                            "scale": None,
+                        })
+                        found = True
+                        break
+                except Exception:
+                    continue
+            if found:
+                break
+
+    if not memories:
+        raise HTTPException(status_code=404, detail="No matching memories found")
+
+    active_room = {
+        "room_id": "testroom1",
+        "profile_id": selection.profile_id,
+        "memories": memories,
+    }
+
+    active_room_json = json.dumps(active_room, indent=2)
+
+    blob_path = f"profiles/{selection.profile_id}/active_room.json"
+    blob_client = container_client.get_blob_client(blob_path)
+
+    try:
+        blob_client.upload_blob(
+            active_room_json,
+            overwrite=True,
+            content_settings=ContentSettings(content_type="application/json"),
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to upload active_room.json: {str(e)}")
+
+    return {
+        "ok": True,
+        "profile_id": selection.profile_id,
+        "memories_count": len(memories),
+    }
+
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

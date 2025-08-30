@@ -1,26 +1,35 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'package:google_fonts/google_fonts.dart';
+
 import 'package:memory_for_future/models/memory.dart';
 
-const String baseUrl = "http://127.0.0.1:8000"; // Change to backend IP if needed
+const String baseUrl = "http://127.0.0.1:8000";
 
-class VrScreen extends StatefulWidget {
+class VRoomScreen extends StatefulWidget {
   final String profileId;
   final String username;
-  const VrScreen({Key? key, required this.profileId, required this.username}) : super(key: key);
+
+  const VRoomScreen({
+    Key? key,
+    required this.profileId,
+    required this.username,
+  }) : super(key: key);
 
   @override
-  State<VrScreen> createState() => _VrScreenState();
+  State<VRoomScreen> createState() => _VRoomScreenState();
 }
 
-class _VrScreenState extends State<VrScreen> {
+class _VRoomScreenState extends State<VRoomScreen> {
   List<Memory> memories = [];
-  Set<String> selectedMemoryPaths = {};
-  bool isLoading = true;
-  bool isSubmitting = false;
+  Set<String> selectedMemoryIds = {};
+  bool isLoading = false;
+  String? resultMessage;
+
+  // Added field to store activeRoomUrl returned from backend for launching VR app
+  String? activeRoomUrl;
 
   @override
   void initState() {
@@ -29,118 +38,233 @@ class _VrScreenState extends State<VrScreen> {
   }
 
   Future<void> fetchMemories() async {
-    setState(() => isLoading = true);
+    setState(() {
+      isLoading = true;
+      resultMessage = null;
+    });
     try {
-      final response = await http.get(Uri.parse('$baseUrl/get-memories/${widget.profileId}'));
+      final response = await http.get(
+        Uri.parse('$baseUrl/get-memories/${widget.profileId}'),
+      );
       if (response.statusCode == 200) {
         final List data = json.decode(response.body);
         setState(() {
           memories = data.map((m) => Memory.fromJson(m)).toList();
-          isLoading = false;
         });
       } else {
-        setState(() => isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Failed to load memories'), backgroundColor: Colors.redAccent));
-      }
-    } catch (_) {
-      setState(() => isLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Failed to load memories'), backgroundColor: Colors.redAccent));
-    }
-  }
-
-  Future<void> submitSelectedMemories() async {
-    if (selectedMemoryPaths.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Select at least one memory to create VR Room'), backgroundColor: Colors.amber));
-      return;
-    }
-
-    setState(() => isSubmitting = true);
-
-    try {
-      final body = jsonEncode({'memory_paths': selectedMemoryPaths.toList()});
-      final response = await http.post(
-        Uri.parse('$baseUrl/vr/room/active/${widget.profileId}'),
-        headers: {"Content-Type": "application/json"},
-        body: body,
-      );
-
-      setState(() => isSubmitting = false);
-
-      if (response.statusCode == 200) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('VR Room created! Open your VR app to see.'), backgroundColor: Colors.green));
-        Navigator.pop(context);
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to create VR Room (${response.reasonPhrase})'), backgroundColor: Colors.redAccent));
+        setState(() {
+          resultMessage = "Failed to fetch memories: ${response.statusCode}";
+        });
       }
     } catch (e) {
-      setState(() => isSubmitting = false);
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Error while creating VR Room'), backgroundColor: Colors.redAccent));
+      setState(() {
+        resultMessage = "Error: $e";
+      });
+    } finally {
+      setState(() {
+        isLoading = false;
+      });
     }
   }
 
-  Widget buildMemorySelectionGrid() {
-    if (memories.isEmpty) {
-      return Center(child: Text("No memories found", style: GoogleFonts.poppins(color: Colors.white54, fontSize: 16)));
-    }
-    return GridView.builder(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, mainAxisSpacing: 26, crossAxisSpacing: 20, childAspectRatio: 0.95),
-      itemCount: memories.length,
-      itemBuilder: (context, index) {
-        final memory = memories[index];
-        final String path = memory.filePath ?? ''; // full blob relative path expected here
-        final bool isSelected = selectedMemoryPaths.contains(path);
+  void toggleSelection(String memoryId) {
+    setState(() {
+      if (selectedMemoryIds.contains(memoryId)) {
+        selectedMemoryIds.remove(memoryId);
+      } else {
+        selectedMemoryIds.add(memoryId);
+      }
+    });
+  }
 
-        return GestureDetector(
-          onTap: () {
-            setState(() {
-              if (isSelected) selectedMemoryPaths.remove(path);
-              else selectedMemoryPaths.add(path);
-            });
-          },
-          child: Stack(
-            children: [
-              Container(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(26),
-                  boxShadow: [
-                    BoxShadow(color: isSelected ? Colors.cyanAccent.withOpacity(0.23) : Colors.white12, blurRadius: 30, spreadRadius: 7),
-                  ],
-                  border: Border.all(color: isSelected ? Colors.cyanAccent : Colors.transparent, width: 2.3),
-                  gradient: LinearGradient(colors: [Colors.black.withOpacity(0.12), Colors.cyanAccent.withOpacity(0.08)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+  Future<void> createVRRoom() async {
+    if (selectedMemoryIds.isEmpty) {
+      setState(() {
+        resultMessage = "Please select at least one memory.";
+      });
+      return;
+    }
+    setState(() {
+      isLoading = true;
+      resultMessage = null;
+      activeRoomUrl = null; // reset
+    });
+
+    // Convert selectedMemoryIds to a List explicitly to ensure proper serialization
+    final List<String> memoryList = selectedMemoryIds.toList(growable: false);
+
+    final requestBody = json.encode({
+      "profile_id": widget.profileId,
+      "selected_memory_ids": memoryList,
+    });
+
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/vr/create-vr-room/'),
+        headers: {"Content-Type": "application/json"},
+        body: requestBody,
+      );
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        setState(() {
+          resultMessage =
+              "VR Room created: ${data['memories_count']} memories included.";
+          activeRoomUrl = data['active_room_url']; // Store SAS URL from backend
+        });
+        // TODO: Launch Unity VR with returned active_room_url
+        // For example, pass activeRoomUrl to VR launcher via deep link or intent
+      } else {
+        setState(() {
+          resultMessage =
+              "Failed to create VR room: ${response.statusCode} ${response.body}";
+        });
+      }
+    } catch (e) {
+      setState(() {
+        resultMessage = "Error: $e";
+      });
+    } finally {
+      setState(() {
+        isLoading = false;
+      });
+    }
+  }
+
+  // UI below is unchanged except optional place to show activeRoomUrl for debug
+  Widget buildMemoryGridCard(Memory memory) {
+    final isSelected = selectedMemoryIds.contains(memory.uniqueId);
+    final glow = getCardGlow(memory.fileType);
+    final iconData = getCardIcon(memory.fileType);
+
+    return GestureDetector(
+      onTap: () => toggleSelection(memory.uniqueId),
+      child: Stack(
+        children: [
+          Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [
+                BoxShadow(
+                  color: glow.withOpacity(0.15),
+                  blurRadius: 22,
+                  spreadRadius: 2,
                 ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(24),
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      if (memory.contentUrl != null && memory.contentUrl!.isNotEmpty)
-                        Image.network(
-                          memory.contentUrl!,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => Container(color: Colors.black12, child: Center(child: Icon(Icons.broken_image, color: Colors.cyanAccent))),
-                          loadingBuilder: (context, child, progress) => progress == null ? child : Container(color: Colors.black12, child: const Center(child: CircularProgressIndicator(color: Colors.cyanAccent))),
-                        ),
-                      Positioned(left: 8, top: 8, child: CircleAvatar(radius: 16, backgroundColor: isSelected ? Colors.cyanAccent.withOpacity(0.89) : Colors.white30, child: isSelected ? const Icon(Icons.check, color: Colors.black, size: 19) : const Icon(Icons.check_box_outline_blank, color: Colors.white70, size: 19))),
-                      Positioned(
-                        bottom: 14,
-                        left: 8,
-                        right: 8,
-                        child: Container(
-                          decoration: BoxDecoration(color: Colors.black.withOpacity(0.56), borderRadius: BorderRadius.circular(12)),
-                          padding: const EdgeInsets.symmetric(vertical: 5, horizontal: 10),
-                          child: Text(memory.title, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13.5)),
-                        ),
-                      )
-                    ],
-                  ),
-                ),
+              ],
+              gradient: LinearGradient(
+                colors: [
+                  Colors.white.withOpacity(.06),
+                  glow.withOpacity(.04),
+                  Colors.black.withOpacity(.13),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
               ),
-            ],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(20),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  if (isImage(memory.fileType) && memory.contentUrl.isNotEmpty)
+                    Image.network(
+                      memory.contentUrl,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) =>
+                          Container(color: Colors.black26),
+                      loadingBuilder: (_, child, progress) =>
+                          progress == null
+                              ? child
+                              : Container(
+                                  color: Colors.black12,
+                                  child: Center(
+                                    child: CircularProgressIndicator(
+                                        color: Colors.cyanAccent),
+                                  ),
+                                ),
+                    ),
+                  if (!isImage(memory.fileType) || memory.contentUrl.isEmpty)
+                    Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            glow.withOpacity(0.12),
+                            Colors.black.withOpacity(.19)
+                          ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                      ),
+                    ),
+                  Positioned.fill(
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 7, sigmaY: 7),
+                      child: Container(color: Colors.black.withOpacity(.15)),
+                    ),
+                  ),
+                  if (!isImage(memory.fileType))
+                    Center(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: glow.withOpacity(.14),
+                        ),
+                        padding: const EdgeInsets.all(18),
+                        child: Icon(
+                          iconData,
+                          size: 35,
+                          color: glow,
+                        ),
+                      ),
+                    ),
+                  Align(
+                    alignment: Alignment.bottomLeft,
+                    child: Container(
+                      margin: const EdgeInsets.all(12),
+                      padding:
+                          const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(.73),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        memory.title,
+                        style: GoogleFonts.poppins(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 15,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
-        );
-      },
+          Positioned(
+            top: 11,
+            right: 12,
+            child: Checkbox(
+              value: isSelected,
+              onChanged: (_) => toggleSelection(memory.uniqueId),
+              checkColor: Colors.white,
+              activeColor: Colors.cyanAccent,
+              side: BorderSide(color: Colors.cyanAccent, width: 1.3),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(7)),
+            ),
+          ),
+        ],
+      ),
     );
+  }
+
+  int getCrossAxisCount(BuildContext context) {
+    double width = MediaQuery.of(context).size.width;
+    if (width > 1100) return 5;
+    if (width > 900) return 4;
+    if (width > 650) return 3;
+    return 2;
   }
 
   @override
@@ -148,37 +272,130 @@ class _VrScreenState extends State<VrScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFF0c111c),
       appBar: AppBar(
-        elevation: 0,
-        backgroundColor: Colors.transparent,
-        toolbarHeight: 77,
-        title: Row(
-          children: [
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(shape: BoxShape.circle, gradient: const LinearGradient(colors: [Colors.cyanAccent, Colors.purpleAccent], begin: Alignment.topLeft, end: Alignment.bottomRight), boxShadow: [BoxShadow(color: Colors.purpleAccent.withOpacity(0.3), blurRadius: 13, spreadRadius: 6)]),
-              child: Center(child: Text(widget.username.isNotEmpty ? widget.username[0].toUpperCase() : '', style: GoogleFonts.russoOne(color: Colors.white, fontSize: 22, letterSpacing: 2.5, fontWeight: FontWeight.bold))),
-            ),
-            const SizedBox(width: 15),
-            Expanded(
-              child: Text('Select memories for\nVR Room', style: GoogleFonts.orbitron(fontWeight: FontWeight.w900, color: Colors.white, fontSize: 21, letterSpacing: 0.35, height: 1.15), maxLines: 2),
-            ),
-          ],
-        ),
+        title: Text('Create VR Room for ${widget.username}',
+            style: GoogleFonts.poppins(fontWeight: FontWeight.bold)),
+        backgroundColor: Color(0xFF181e2a),
       ),
-      body: isLoading ? const Center(child: CircularProgressIndicator(color: Colors.cyanAccent)) : buildMemorySelectionGrid(),
-      floatingActionButton: Padding(
-        padding: const EdgeInsets.only(bottom: 26),
-        child: FloatingActionButton.extended(
-          onPressed: isSubmitting ? null : submitSelectedMemories,
-          backgroundColor: Colors.cyanAccent,
-          icon: const Icon(Icons.vrpano, color: Colors.black),
-          label: isSubmitting
-              ? const SizedBox(height: 21, width: 21, child: CircularProgressIndicator(strokeWidth: 2.4, color: Colors.black))
-              : Text("Create VR Room", style: GoogleFonts.orbitron(color: Colors.black, fontWeight: FontWeight.bold)),
-        ),
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+      body: isLoading
+          ? Center(child: CircularProgressIndicator(color: Colors.cyanAccent))
+          : Column(
+              children: [
+                Expanded(
+                  child: memories.isEmpty
+                      ? Center(
+                          child: Text(
+                          "No memories found.",
+                          style: GoogleFonts.poppins(
+                            color: Colors.white70,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ))
+                      : Padding(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 18, vertical: 0),
+                          child: GridView.builder(
+                            padding: const EdgeInsets.symmetric(vertical: 18),
+                            gridDelegate:
+                                SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: getCrossAxisCount(context),
+                              crossAxisSpacing: 20,
+                              mainAxisSpacing: 24,
+                              childAspectRatio: 0.9,
+                            ),
+                            itemCount: memories.length,
+                            itemBuilder: (context, index) =>
+                                buildMemoryGridCard(memories[index]),
+                          ),
+                        ),
+                ),
+                if (resultMessage != null)
+                  Padding(
+                    padding: EdgeInsets.all(8),
+                    child: Text(
+                      resultMessage!,
+                      style: TextStyle(color: Colors.red),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                if (activeRoomUrl != null)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    child: SelectableText(
+                      "VR JSON URL:\n$activeRoomUrl",
+                      style: TextStyle(color: Colors.white70, fontSize: 12),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                Padding(
+                  padding: EdgeInsets.all(8),
+                  child: ElevatedButton.icon(
+                    icon: Icon(Icons.vrpano_rounded),
+                    onPressed: isLoading ? null : createVRRoom,
+                    label: Text('Create VR Room'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.cyanAccent,
+                      foregroundColor: Colors.black,
+                      minimumSize: Size(195, 48),
+                      textStyle: GoogleFonts.poppins(
+                          fontWeight: FontWeight.w600, fontSize: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
     );
   }
+}
+
+// --- Utility functions remain unchanged ---
+bool isImage(String fileType) {
+  final t = fileType.toLowerCase();
+  return t.contains('image') ||
+      ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'heic'].any(t.contains);
+}
+
+bool isVideo(String fileType) {
+  final t = fileType.toLowerCase();
+  return t.contains('video') ||
+      ['mp4', 'mov', 'mkv', 'avi', 'webm', 'm4v', 'mpeg'].any(t.contains);
+}
+
+bool isAudio(String fileType) {
+  final t = fileType.toLowerCase();
+  return t.contains('audio') ||
+      ['mp3', 'wav', 'aac', 'm4a', 'ogg', 'oga', 'flac', 'opus', 'm4b'].any(t.contains);
+}
+
+bool isDocument(String fileType) {
+  final t = fileType.toLowerCase();
+  return t.contains('pdf') ||
+      t.contains('doc') ||
+      t.contains('docx') ||
+      t.contains('txt') ||
+      t.contains('text') ||
+      t.contains('plain') ||
+      t.contains('rtf') ||
+      t.contains('ppt') ||
+      t.contains('pptx') ||
+      t.contains('xls') ||
+      t.contains('xlsx') ||
+      t.contains('csv');
+}
+
+Color getCardGlow(String fileType) {
+  if (isVideo(fileType)) return Colors.pinkAccent;
+  if (isAudio(fileType)) return Colors.purpleAccent;
+  if (isDocument(fileType)) return Colors.amberAccent;
+  return Colors.cyanAccent;
+}
+
+IconData getCardIcon(String fileType) {
+  if (isVideo(fileType)) return Icons.play_circle_fill_rounded;
+  if (isAudio(fileType)) return Icons.music_note_rounded;
+  if (isDocument(fileType)) return Icons.description_rounded;
+  return Icons.image_rounded;
 }

@@ -1,19 +1,19 @@
-// E:\MemoryForFuture\frontend\lib\screens\memory_list_screen.dart
-
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 
-
 import 'upload_memory_screen.dart';
 import 'ai_chat_screen.dart';
 import 'media_viewer_screen.dart';
 import 'package:memory_for_future/models/memory.dart';
 import 'image_to_3d_page.dart';
-import 'voice_controls.dart'; // Import VoiceControls screen for navigation
+import 'voice_controls.dart';
 
+// Add new imports
+import 'flux_aging_page.dart';
+import 'vr_screen.dart'; // <-- Make sure this path fits your project
 
 bool isImage(String fileType) {
   final t = fileType.toLowerCase();
@@ -21,20 +21,17 @@ bool isImage(String fileType) {
       ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'heic'].any(t.contains);
 }
 
-
 bool isVideo(String fileType) {
   final t = fileType.toLowerCase();
   return t.contains('video') ||
       ['mp4', 'mov', 'mkv', 'avi', 'webm', 'm4v', 'mpeg'].any(t.contains);
 }
 
-
 bool isAudio(String fileType) {
   final t = fileType.toLowerCase();
   return t.contains('audio') ||
       ['mp3', 'wav', 'aac', 'm4a', 'ogg', 'oga', 'flac', 'opus', 'm4b'].any(t.contains);
 }
-
 
 bool isDocument(String fileType) {
   final t = fileType.toLowerCase();
@@ -52,14 +49,11 @@ bool isDocument(String fileType) {
       t.contains('csv');
 }
 
-
 const String baseUrl = "http://127.0.0.1:8000";
-
 
 class MemoryListScreen extends StatefulWidget {
   final String profileId;
   final String username;
-
 
   const MemoryListScreen({
     Key? key,
@@ -67,20 +61,16 @@ class MemoryListScreen extends StatefulWidget {
     required this.username,
   }) : super(key: key);
 
-
   @override
   State<MemoryListScreen> createState() => _MemoryListScreenState();
 }
-
 
 class _MemoryListScreenState extends State<MemoryListScreen> with TickerProviderStateMixin {
   late TabController _tabController;
   List<Memory> memories = [];
   bool isLoading = true;
 
-
   final List<String> tabs = ['ALL', 'IMAGES', 'VIDEOS', 'AUDIOS', 'DOCUMENTS'];
-
 
   @override
   void initState() {
@@ -91,7 +81,6 @@ class _MemoryListScreenState extends State<MemoryListScreen> with TickerProvider
     });
     fetchMemories();
   }
-
 
   Future<void> fetchMemories() async {
     setState(() => isLoading = true);
@@ -122,7 +111,6 @@ class _MemoryListScreenState extends State<MemoryListScreen> with TickerProvider
     }
   }
 
-
   List<Memory> filterByType(String type) {
     switch (type) {
       case 'images':
@@ -139,7 +127,6 @@ class _MemoryListScreenState extends State<MemoryListScreen> with TickerProvider
     }
   }
 
-
   void openMemory(Memory memory) {
     final currentType = tabs[_tabController.index].toLowerCase();
     final currentList = filterByType(currentType);
@@ -155,14 +142,12 @@ class _MemoryListScreenState extends State<MemoryListScreen> with TickerProvider
     );
   }
 
-
   Color getCardGlow(String fileType) {
     if (isVideo(fileType)) return Colors.pinkAccent;
     if (isAudio(fileType)) return Colors.purpleAccent;
     if (isDocument(fileType)) return Colors.amberAccent;
     return Colors.cyanAccent;
   }
-
 
   IconData getCardIcon(String fileType) {
     if (isVideo(fileType)) return Icons.play_circle_fill_rounded;
@@ -171,12 +156,10 @@ class _MemoryListScreenState extends State<MemoryListScreen> with TickerProvider
     return Icons.image_rounded;
   }
 
-
   Widget buildMemoryCard(Memory memory) {
     final fileType = memory.fileType.toLowerCase();
     final glow = getCardGlow(fileType);
     final iconData = getCardIcon(fileType);
-
 
     return GestureDetector(
       onTap: () => openMemory(memory),
@@ -290,7 +273,6 @@ class _MemoryListScreenState extends State<MemoryListScreen> with TickerProvider
     );
   }
 
-
   int getCrossAxisCount(BuildContext context) {
     double width = MediaQuery.of(context).size.width;
     if (width > 1100) return 5;
@@ -298,7 +280,6 @@ class _MemoryListScreenState extends State<MemoryListScreen> with TickerProvider
     if (width > 650) return 3;
     return 2;
   }
-
 
   Widget buildCustomTabBar() {
     return Container(
@@ -350,7 +331,6 @@ class _MemoryListScreenState extends State<MemoryListScreen> with TickerProvider
                   'DOCUMENTS': memories.where((m) => isDocument(m.fileType)).length,
                 }[tab] ?? 0;
 
-
                 return Tab(
                   child: Container(
                     width: tabWidth,
@@ -398,7 +378,6 @@ class _MemoryListScreenState extends State<MemoryListScreen> with TickerProvider
       }),
     );
   }
-
 
   @override
   Widget build(BuildContext context) {
@@ -486,23 +465,21 @@ class _MemoryListScreenState extends State<MemoryListScreen> with TickerProvider
                   ),
                   const Spacer(),
 
-
-                  // Navigation button to VoiceControls screen (mic icon)
+                  // Voice Assistant (mic) button
                   IconButton(
-  icon: const Icon(Icons.mic_rounded, color: Colors.cyanAccent),
-  tooltip: 'Voice Assistant',
-  onPressed: () {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => const VoiceControls(),
-      ),
-    );
-  },
-),
+                    icon: const Icon(Icons.mic_rounded, color: Colors.cyanAccent),
+                    tooltip: 'Voice Assistant',
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const VoiceControls(),
+                        ),
+                      );
+                    },
+                  ),
 
-
-
+                  // Image to 3D
                   IconButton(
                     icon: const Icon(Icons.flash_on_outlined, color: Colors.cyanAccent),
                     tooltip: 'Image to 3D',
@@ -513,6 +490,8 @@ class _MemoryListScreenState extends State<MemoryListScreen> with TickerProvider
                       );
                     },
                   ),
+
+                  // Chat with AI
                   IconButton(
                     icon: const Icon(Icons.chat_bubble_outline_rounded, color: Colors.purpleAccent),
                     tooltip: 'Chat with AI',
@@ -525,6 +504,36 @@ class _MemoryListScreenState extends State<MemoryListScreen> with TickerProvider
                             username: widget.username,
                           ),
                         ),
+                      );
+                    },
+                  ),
+
+                  // --------- NEW FEATURES BELOW ------------
+
+                  // Age Transformation Button
+                  IconButton(
+                    icon: const Icon(Icons.auto_fix_high_rounded, color: Colors.greenAccent),
+                    tooltip: 'Age Transformation',
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => FluxAgingPage()),
+                      );
+                    },
+                  ),
+
+                  // VR Room Button
+                  IconButton(
+                    icon: const Icon(Icons.vrpano_rounded, color: Colors.lightBlueAccent),
+                    tooltip: 'VR Room',
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => VRoomScreen(
+                          profileId: widget.profileId,
+                          username: widget.username,
+                          )
+                          ),
                       );
                     },
                   ),

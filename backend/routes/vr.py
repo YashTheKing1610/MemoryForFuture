@@ -1,166 +1,150 @@
-# vr.py
-import os
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
+from typing import List, Optional
+import datetime
 import json
-import uuid
-from datetime import datetime, timedelta
-from fastapi import APIRouter, HTTPException, Request
+import os
+
 from azure.storage.blob import (
     BlobServiceClient,
     generate_blob_sas,
     BlobSasPermissions,
+    ContentSettings,
 )
-from dotenv import load_dotenv
 
-# Load env vars
-load_dotenv()
-CONN_STR = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
-CONTAINER = os.getenv("AZURE_CONTAINER_NAME")
+router = APIRouter()
 
-if not CONN_STR or not CONTAINER:
-    raise RuntimeError("Azure storage configuration missing in .env file")
+# Load environment variables for Azure Storage
+AZURE_CONNECTION_STRING = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
+CONTAINER_NAME = os.getenv("AZURE_CONTAINER_NAME")
 
-# --- Parse account name & key from connection string ---
-def _parse_connection_string(conn_str: str):
-    parts = dict(p.split("=", 1) for p in conn_str.split(";") if "=" in p)
-    return parts.get("AccountName"), parts.get("AccountKey")
+blob_service_client = BlobServiceClient.from_connection_string(AZURE_CONNECTION_STRING)
+container_client = blob_service_client.get_container_client(CONTAINER_NAME)
 
-ACCOUNT_NAME, ACCOUNT_KEY = _parse_connection_string(CONN_STR)
-if not ACCOUNT_NAME or not ACCOUNT_KEY:
-    raise RuntimeError("Could not parse AccountName/AccountKey from connection string")
 
-# Azure clients
-blob_service_client = BlobServiceClient.from_connection_string(CONN_STR)
-container_client = blob_service_client.get_container_client(CONTAINER)
+class MemorySelection(BaseModel):
+    profile_id: str
+    selected_memory_ids: List[str]
 
-# FastAPI router
-router = APIRouter(prefix="/vr", tags=["VR"])
 
-# --- Helpers ---
-def generate_sas_url(blob_name: str, expiry_minutes: int = 30) -> str:
-    """Generate a short-lived read-only SAS URL for a blob"""
-    sas = generate_blob_sas(
-        account_name=ACCOUNT_NAME,
-        container_name=CONTAINER,
+def get_account_key():
+    parts = AZURE_CONNECTION_STRING.split(";")
+    for part in parts:
+        if part.lower().startswith("accountkey="):
+            return part.split("=", 1)[1]
+    raise RuntimeError("Could not find account key in connection string")
+
+
+account_name = blob_service_client.account_name
+account_key = get_account_key()
+
+
+def generate_sas_url(blob_name: str, expiry_hours: int = 105) -> str:
+    sas_token = generate_blob_sas(
+        account_name=account_name,
+        container_name=CONTAINER_NAME,
         blob_name=blob_name,
-        account_key=ACCOUNT_KEY,
+        account_key=account_key,
         permission=BlobSasPermissions(read=True),
-        expiry=datetime.utcnow() + timedelta(minutes=expiry_minutes),
+        expiry=datetime.datetime.utcnow() + datetime.timedelta(hours=expiry_hours),
     )
-    return f"https://{ACCOUNT_NAME}.blob.core.windows.net/{CONTAINER}/{blob_name}?{sas}"
+    return f"https://{account_name}.blob.core.windows.net/{CONTAINER_NAME}/{blob_name}?{sas_token}"
 
-def _detect_type_from_name(name: str) -> str:
-    """Infer memory type from file extension"""
-    lower = name.lower()
-    if lower.endswith((".jpg", ".jpeg", ".png", ".gif", ".webp")):
-        return "image"
-    if lower.endswith((".mp4", ".mov", ".mkv", ".avi", ".webm")):
-        return "video"
-    if lower.endswith((".mp3", ".wav", ".ogg", ".m4a")):
-        return "audio"
-    return "document"
 
-# --- Routes ---
-@router.get("/room/sample")
-async def get_sample_room():
-    """
-    Return all memories in the container (for sample Unity scene testing).
-    """
-    try:
-        memories = []
-        for blob in container_client.list_blobs():
-            try:
-                sas = generate_sas_url(blob.name)
-            except Exception:
-                continue
-            memories.append({
-                "id": str(uuid.uuid4()),
-                "name": blob.name,
-                "type": _detect_type_from_name(blob.name),
-                "url": sas,
-            })
+@router.post("/create-vr-room/")
+async def create_vr_room(selection: MemorySelection):
+    print(f"[INFO] Received memory IDs: {selection.selected_memory_ids}")
+    if not selection.profile_id or not selection.selected_memory_ids:
+        raise HTTPException(status_code=400, detail="profile_id and selected_memory_ids are required")
 
-        return {
-            "room_id": "sample_room",
-            "scene": "default_sample_scene",
-            "memories": memories,
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to fetch sample room: {e}")
-
-@router.post("/room/active/{profile_id}")
-async def set_active_room(profile_id: str, request: Request):
-    body = await request.json()
-    memory_paths = body.get("memory_paths")
-    if not memory_paths or not isinstance(memory_paths, list):
-        raise HTTPException(status_code=400, detail="Provide 'memory_paths' as a list of blob paths")
-
-    prefix = f"profiles/{profile_id}/"
-    for p in memory_paths:
-        if not p.startswith(prefix):
-            raise HTTPException(status_code=400, detail=f"Invalid path: {p}. Must start with '{prefix}'")
-
-    active = {
-        "room_id": f"active_{profile_id}",
-        "profile_id": profile_id,
-        "created_at": datetime.utcnow().isoformat() + "Z",
-        "memory_paths": memory_paths,
+    possible_locations = {
+        "image": ("images", [".jpg", ".jpeg", ".png", ".webp"]),
+        "video": ("videos", [".mp4", ".mov", ".webm"]),
+        "audio": ("voice_samples", [".mp3", ".wav", ".m4a"]),
+        "text": ("documents", [".txt", ".json", ".pdf"]),
     }
 
-    blob_name = f"profiles/{profile_id}/active_room.json"
-    try:
-        blob_client = container_client.get_blob_client(blob_name)
-        blob_client.upload_blob(json.dumps(active), overwrite=True, content_type="application/json")
-        return {"status": "ok", "message": "Active room saved", "room_blob": blob_name}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to save active room: {e}")
-    
-@router.get("/room/active/{profile_id}")
-async def get_active_room(profile_id: str):
-    """
-    Return active_room.json if present, else list all files under profile folder.
-    """
-    active_blob_name = f"profiles/{profile_id}/active_room.json"
     memories = []
+    missing_ids = []
+
+    for mem_id in selection.selected_memory_ids:
+        found = False
+        print(f"[INFO] Checking memory ID: {mem_id}")
+        for mem_type, (folder, exts) in possible_locations.items():
+            for ext in exts:
+                blob_name = f"profiles/{selection.profile_id}/{folder}/{mem_id}{ext}"
+                blob_client = container_client.get_blob_client(blob_name)
+                try:
+                    blob_exists = blob_client.exists()
+                except Exception as e:
+                    print(f"[ERROR] Exception checking blob {blob_name}: {e}")
+                    blob_exists = False
+
+                print(f"[DEBUG] Path: {blob_name} | Exists: {blob_exists}")
+
+                if blob_exists:
+                    try:
+                        url = generate_sas_url(blob_name)
+                        memories.append({
+                            "id": mem_id,
+                            "type": mem_type,
+                            "url": url,
+                            "title": f"{mem_id}{ext}",
+                            "position": None,
+                            "rotation": None,
+                            "scale": None,
+                        })
+                        print(f"[SUCCESS] Added memory: {mem_id} @ {blob_name}")
+                    except Exception as err:
+                        print(f"[ERROR] Failed to generate SAS for {blob_name}: {err}")
+                        continue
+                    found = True
+                    break
+            if found:
+                break
+        if not found:
+            missing_ids.append(mem_id)
+            print(f"[WARNING] No blob found for memory ID: {mem_id}")
+
+    if not memories:
+        print(f"[ERROR] No matching blobs found for any of the selected IDs: {selection.selected_memory_ids}")
+        raise HTTPException(status_code=404, detail="No matching memories found")
+
+    if missing_ids:
+        print(f"[INFO] These memory IDs did not have matching blobs: {missing_ids}")
+
+    # Here is the change: overwrite single fixed active_room.json for all profiles at 'yash_me' folder
+    active_room = {
+        "room_id": f"room_{datetime.datetime.utcnow().strftime('%Y%m%d%H%M%S')}",
+        "profile_id": selection.profile_id,
+        "memories": memories,
+    }
+
+    active_room_json = json.dumps(active_room, indent=2)
+
+    # Fixed blob path for shared JSON file
+    fixed_blob_path = "profiles/yash_me/active_room.json"
+    blob_client = container_client.get_blob_client(fixed_blob_path)
 
     try:
-        blob_client = container_client.get_blob_client(active_blob_name)
-        try:
-            data = blob_client.download_blob().readall()
-            active = json.loads(data.decode("utf-8"))
-            memory_paths = active.get("memory_paths", [])
-        except Exception:
-            memory_paths = []  # No active room set → fallback
-
-        if memory_paths:
-            for path in memory_paths:
-                try:
-                    sas = generate_sas_url(path)
-                except Exception:
-                    continue
-                memories.append({
-                    "id": str(uuid.uuid4()),
-                    "name": path,
-                    "type": _detect_type_from_name(path),
-                    "url": sas,
-                })
-        else:
-            prefix = f"profiles/{profile_id}/"
-            for blob in container_client.list_blobs(name_starts_with=prefix):
-                try:
-                    sas = generate_sas_url(blob.name)
-                except Exception:
-                    continue
-                memories.append({
-                    "id": str(uuid.uuid4()),
-                    "name": blob.name,
-                    "type": _detect_type_from_name(blob.name),
-                    "url": sas,
-                })
-
-        return {
-            "room_id": f"active_{profile_id}",
-            "profile_id": profile_id,
-            "memories": memories,
-        }
+        blob_client.upload_blob(
+            active_room_json,
+            overwrite=True,
+            content_settings=ContentSettings(content_type="application/json"),
+        )
+        print(f"[SUCCESS] Active room JSON uploaded to {fixed_blob_path}")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to build active room: {e}")
+        print(f"[ERROR] Failed to upload active_room.json to blob storage: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to upload active_room.json: {str(e)}")
+
+    response = {
+        "ok": True,
+        "profile_id": selection.profile_id,
+        "memories_count": len(memories),
+        "missing_memory_ids": missing_ids,
+        "active_room": active_room,
+        # Return SAS URL for the fixed shared file only
+        "active_room_url": generate_sas_url(fixed_blob_path),
+    }
+    print(f"[INFO] VR room creation response: {response}")
+    return response
